@@ -15,5 +15,10 @@
 
 ### Linux/macOS
 ```bash
-gcc interpret.c -o alwex
+gcc interpret.c -o alwex -Wall -Wextra
 sudo mv alwex /usr/local/bin/
+```
+### Windows
+```bash
+gcc alwex.c -o alwex.exe -Wall -Wextra
+```
