@@ -1,9 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+#include <ctype.h>  // Используем стандартные isdigit, isalpha, isalnum
 
-// Реализация недостающих функций
+// Удаляем самодельные реализации isdigit/isalpha/isalnum
+// Используем стандартные из ctype.h
+
+// Реализация strlcpy для Windows
+#ifndef _WIN32
+#define strlcpy(dest, src, size) strncpy(dest, src, size)
+#else
 size_t strlcpy(char *dest, const char *src, size_t size) {
     size_t src_len = strlen(src);
     if (size == 0) return src_len;
@@ -13,6 +19,7 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
     dest[to_copy] = '\0';
     return src_len;
 }
+#endif
 
 // Основные структуры данных
 #define MAX_VARS 50
@@ -44,18 +51,6 @@ static int function_count = 0;
 // Вспомогательные функции
 int my_isspace(int c) {
     return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
-}
-
-int isdigit(int c) {
-    return c >= '0' && c <= '9';
-}
-
-int isalpha(int c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
-int isalnum(int c) {
-    return isalpha(c) || isdigit(c);
 }
 
 double str_to_double(const char* s) {
@@ -169,7 +164,7 @@ double eval_expression(const char* expr) {
             continue;
         }
         
-        if (isalpha(*p)) {
+        if (isalpha(*p) || *p == '_') {
             char var_name[50] = {0};
             int i = 0;
             
@@ -376,7 +371,7 @@ void execute(const char* code) {
         if (strstr(token, "++") || strstr(token, "--")) {
             char var_name[50] = {0};
             char* op_ptr = token;
-            while (*op_ptr && !isalnum(*op_ptr)) op_ptr++;
+            while (*op_ptr && !isalnum(*op_ptr) && *op_ptr != '_') op_ptr++;
             
             int i = 0;
             while (isalnum(*op_ptr) || *op_ptr == '_') {
