@@ -4,7 +4,13 @@
 #include <ctype.h>
 #include <time.h>
 
-// Реализация strlcpy для Windows
+#ifdef _WIN32
+    #include <windows.h>
+    #define sleep(seconds) Sleep(seconds * 1000)
+#else
+    #include <unistd.h>
+#endif
+
 #ifndef _WIN32
 #define strlcpy(dest, src, size) strncpy(dest, src, size)
 #else
@@ -405,6 +411,23 @@ void execute(const char* code, int import_depth) {
                 else v->value -= 1;
             }
             continue;
+        }
+
+        else if (strncmp(token, "wait", 4) == 0) {
+            // Пропускаем "wait" и любые пробелы после него
+            char* sec_str = token + 4;
+            while (*sec_str == ' ' || *sec_str == '\t') sec_str++;
+            
+            if (*sec_str == '\0') {
+                printf("Error: wait command requires argument\n");
+            } else {
+                int seconds = atoi(sec_str);
+                if (seconds > 0) {
+                    sleep(seconds);
+                } else {
+                    printf("Error: invalid time value\n");
+                }
+            }
         }
 
         if (strncmp(token, "print ", 6) == 0) {
