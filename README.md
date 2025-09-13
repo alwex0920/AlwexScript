@@ -1,49 +1,48 @@
-# AlwexScript - Язык программирования для встраиваемых систем
+# AlwexScript - Programming Language for Embedded Systems
+**Version**: 2.0
+**Supported OS**: Windows, Linux, macOS
+**Latest Updates**: Added terminal command execution and file operations
 
-**Версия**: 1.2  
-**Поддержка ОС**: Windows, Linux, macOS  
-**Обновления**: Добавлена команда wait
+## Language Features
+- Simple syntax similar to natural language
+- Dynamic typing
+- Support for numbers and strings
+- Flow control (conditions, loops)
+- Functions and modularity
+- Built-in I/O operations
+- Library import system
+- Terminal command execution
+- File operations (read, write, append, check existence)
+- Dynamic memory management (Unix systems)
 
-## Особенности языка
-- Простой синтаксис, похожий на естественный язык
-- Динамическая типизация
-- Поддержка чисел и строк
-- Контроль потока выполнения (условия, циклы)
-- Функции и модульность
-- Встроенные операции ввода/вывода
-- **Система импорта библиотек**
-
-## Установка
-
+## Installation
 ### Linux/macOS
 ```bash
 gcc alwex.c -o alwex -Wall -Wextra
 sudo mv alwex /usr/local/bin/
 ```
-
 ### Windows
 ```bash
 gcc alwex.c -o alwex.exe -Wall -Wextra
 ```
 
-## Синтаксис языка
-
-### Основные конструкции
+## Language Syntax
+### Basic Constructs
 ```alw
-# Переменные
+# Variables
 let x = 10
 let name = 'Alice'
 let result = x * 2.5
 
-# Вывод данных
+# Output
 print 'Hello, World!'
 print x
 
-# Ввод данных
+# Input
 inp int age 'Enter your age: '
 inp string name 'Enter your name: '
 
-# Условия
+# Conditions
 if age > 18
     print 'Adult'
 else if age > 13
@@ -52,14 +51,14 @@ else
     print 'Child'
 end
 
-# Циклы
+# Loops
 let counter = 0
 while counter < 5
     print counter
     let counter = counter + 1
 endloop
 
-# Функции
+# Functions
 func greet
     print 'Hello from function!'
     print name
@@ -67,10 +66,9 @@ end
 
 call greet
 ```
-
-### Импорт библиотек
+### Library Import
 ```alw
-import "random"  # Импортирует random.alw
+import "random"  # Imports random.alw
 
 call randint 1 10
 print randint_result
@@ -78,33 +76,54 @@ print randint_result
 call random
 print random_result
 ```
-
-### Операторы
-- Арифметические: `+`, `-`, `*`, `/`, `plus`, `minus`, `mul`, `div`
-- Инкремент/декремент: `++`, `--`, `inc`, `dec`
-- Сравнения: `==`, `!=`, `>`, `<`, `>=`, `<=`
-
-## Стандартные библиотеки
-
-### Библиотека random.alw
+### Terminal Command Execution (New in v2.0)
 ```alw
-# Генерирует случайное целое в диапазоне [min, max]
+# Execute system commands
+exec ls -la              # Linux/macOS
+exec dir                 # Windows
+exec echo "Hello World"
+```
+### File Operations (New in v2.0)
+```alw
+# Write to file
+file_write data.txt "Hello, World!"
+
+# Read from file
+file_read data.txt
+
+# Append to file
+file_append data.txt "Additional content"
+
+# Check file existence
+file_exists data.txt
+```
+
+### Operators
+## Arithmetic: +, -, *, /, plus, minus, mul, div
+
+## Increment/decrement: ++, --, inc, dec
+
+## Comparison: ==, !=, >, <, >=, <=
+
+### Standard Libraries
+random.alw Library
+```alw
+# Generates random integer in range [min, max]
 call randint min max
 print randint_result
 
-# Генерирует случайное дробное число [0, 1)
+# Generates random float (0, 1)
 call random
 print random_result
 
-# Выбирает случайный элемент из массива
+# Selects random element from array
 let colors = ['red', 'green', 'blue']
 call choice colors
 print choice_result
 ```
-
-## Пример программы с импортом
+# Example Program with Import
 ```alw
-# Генератор случайных паролей
+# Random password generator
 import "random"
 
 func generate_password length
@@ -125,36 +144,63 @@ end
 
 inp int pwd_len 'Enter password length: '
 call generate_password pwd_len
-print 'Your password: '
-print generate_password_result
 ```
 
-## Использование
+# Save password to file (New in v2.0)
+```alw
+file_write password.txt generate_password_result
+print 'Password saved to file!'
+```
 
-1. Создайте файл скрипта (например, `program.alw`)
-2. Запустите интерпретатор:
-   ```bash
-   # Linux/macOS
-   ./alwex program.alw
-   
-   # Windows
-   alwex.exe program.alw
-   ```
+# Show file content (New in v2.0)
+```alw
+file_read password.txt
+```
+## Usage
+1. Create a script file (e.g., program.alw)
 
-3. Для использования библиотек разместите их в той же директории
+2. Run the interpreter:
 
-## Системные требования
-- Любая ОС с компилятором GCC (Windows, Linux, macOS)
-- 512 КБ оперативной памяти
-- 1 МБ дискового пространства
+```bash
+# Linux/macOS
+./alwex program.alw
 
-## Ограничения
-- Максимальная глубина импорта: 5 уровней
-- Максимальный размер файла: 64 КБ
-- Максимальное количество переменных: 100
-- Максимальная длина строки: 128 символов
+# Windows
+alwex.exe program.alw
+```
 
-## Разработка
-- Автор: Alwex Developer
-- Лицензия: MIT
-- Репозиторий: https://github.com/alwex0920/AlwexScript
+3. Place library files in the same directory to use them
+
+## System Requirements
+- Any OS with GCC compiler (Windows, Linux, macOS)
+- 512 KB RAM
+- 1 MB disk space
+
+## Enhanced Capabilities (New in v2.0)
+# For Unix Systems (Linux, macOS):
+# Dynamic memory management - No hard limits on variables, strings, and functions
+
+## Increased limits:
+- Variables: 10,000 (was 100)
+- Strings: 1,000 (was 30)
+- Functions: 500 (was 15)
+- Import depth: 50 levels (was 5)
+
+## Terminal command execution with exec command
+
+## File operations for reading, writing, and checking files
+
+## For Windows:
+- Terminal command execution with exec command
+- File operations for reading, writing, and checking files
+- Increased limits compared to previous version
+
+## Development
+- Author: Alwex Developer
+- License: MIT
+- Repository: https://github.com/alwex0920/AlwexScript
+
+## Version History
+- v2.0: Added terminal command execution, file operations, and dynamic memory management for Unix systems
+- v1.2: Added wait command
+- v1.0: Initial release with basic language features and library import system
