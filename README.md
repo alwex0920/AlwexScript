@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 2.0
+**Version**: 2.1
 **Supported OS**: Windows, Linux, macOS
-**Latest Updates**: Added terminal command execution and file operations
+**Latest Updates**: Added interaction with websites in the form of GET and POST, as well as downloading files
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -18,12 +18,12 @@
 ## Installation
 ### Linux/macOS
 ```bash
-gcc alwex.c -o alwex -Wall -Wextra
+gcc alwex.c -o alwex -lcurl -Wall -Wextra
 sudo mv alwex /usr/local/bin/
 ```
 ### Windows
 ```bash
-gcc alwex.c -o alwex.exe -Wall -Wextra
+gcc alwex.c -o alwex.exe -lcurl -Wall -Wextra
 ```
 
 ## Language Syntax
@@ -76,14 +76,14 @@ print randint_result
 call random
 print random_result
 ```
-### Terminal Command Execution (New in v2.0)
+### Terminal Command Execution
 ```alw
 # Execute system commands
 exec ls -la              # Linux/macOS
 exec dir                 # Windows
 exec echo "Hello World"
 ```
-### File Operations (New in v2.0)
+### File Operations
 ```alw
 # Write to file
 file_write data.txt "Hello, World!"
@@ -97,7 +97,15 @@ file_append data.txt "Additional content"
 # Check file existence
 file_exists data.txt
 ```
-
+### HTTP interaction (New in v2.1)
+```alw
+# GET
+http_get <url>
+# POST
+http_post <url> <data>
+# Download file
+http_download <url> <filename>
+```
 ### Operators
 ## Arithmetic: +, -, *, /, plus, minus, mul, div
 
@@ -146,13 +154,13 @@ inp int pwd_len 'Enter password length: '
 call generate_password pwd_len
 ```
 
-# Save password to file (New in v2.0)
+# Save password to file
 ```alw
 file_write password.txt generate_password_result
 print 'Password saved to file!'
 ```
 
-# Show file content (New in v2.0)
+# Show file content
 ```alw
 file_read password.txt
 ```
@@ -176,7 +184,7 @@ alwex.exe program.alw
 - 512 KB RAM
 - 1 MB disk space
 
-## Enhanced Capabilities (New in v2.0)
+## Enhanced Capabilities
 # For Unix Systems (Linux, macOS):
 # Dynamic memory management - No hard limits on variables, strings, and functions
 
@@ -201,6 +209,7 @@ alwex.exe program.alw
 - Repository: https://github.com/alwex0920/AlwexScript
 
 ## Version History
+- v2.1: Added interaction with websites in the form of GET and POST, as well as downloading files
 - v2.0: Added terminal command execution, file operations, and dynamic memory management for Unix systems
 - v1.2: Added wait command
 - v1.0: Initial release with basic language features and library import system
