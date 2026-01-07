@@ -23,7 +23,7 @@ sudo mv alwex /usr/local/bin/
 ```
 ### Windows
 ```bash
-gcc alwex.c -o alwex.exe -lcurl -Wall -Wextra
+gcc alwex.c -o alwex.exe -lwininet -Wall -Wextra
 ```
 
 ## Language Syntax
