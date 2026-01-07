@@ -6,10 +6,26 @@
 
 #ifdef _WIN32
     #include <windows.h>
+    #include <wininet.h>
+    #pragma comment(lib, "wininet.lib")
     #define sleep(seconds) Sleep(seconds * 1000)
+    #define MAX_VARS 1000
+    #define MAX_STRINGS 300
+    #define MAX_FUNCTIONS 150
+    #define MAX_IMPORT_DEPTH 10
 #else
     #include <unistd.h>
+    #include <curl/curl.h>
+    #define MAX_VARS 10000
+    #define MAX_STRINGS 1000
+    #define MAX_FUNCTIONS 500
+    #define MAX_IMPORT_DEPTH 50
 #endif
+
+#define STRING_SIZE 1024
+#define MAX_FUNC_BODY_SIZE 4096
+#define MAX_LINE_LEN 1024
+#define MAX_HTTP_RESPONSE 1048576  // 1MB max response
 
 #ifndef _WIN32
 #define strlcpy(dest, src, size) strncpy(dest, src, size)
@@ -25,15 +41,6 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 }
 #endif
 
-// Основные структуры данных
-#define MAX_VARS 100
-#define MAX_STRINGS 30
-#define STRING_SIZE 128
-#define MAX_FUNCTIONS 15
-#define MAX_FUNC_BODY_SIZE 1024
-#define MAX_LINE_LEN 256
-#define MAX_IMPORT_DEPTH 5
-
 struct Variable {
     char name[50];
     double value;
@@ -42,18 +49,271 @@ struct Variable {
 
 struct Function {
     char name[50];
-    char body[MAX_FUNC_BODY_SIZE];
+    char* body;
 };
 
-// Глобальные переменные
-static struct Variable variables[MAX_VARS];
-static int var_count = 0;
-static char string_pool[MAX_STRINGS][STRING_SIZE];
-static int string_count = 0;
-static struct Function functions[MAX_FUNCTIONS];
-static int function_count = 0;
+// HTTP response buffer
+struct HttpResponse {
+    char* data;
+    size_t size;
+};
 
-// Вспомогательные функции
+static struct Variable *variables = NULL;
+static int var_count = 0;
+static int var_capacity = 0;
+
+static char **string_pool = NULL;
+static int string_count = 0;
+static int string_capacity = 0;
+
+static struct Function *functions = NULL;
+static int function_count = 0;
+static int function_capacity = 0;
+
+static struct HttpResponse last_http_response = {NULL, 0};
+
+void init_memory();
+void free_memory();
+int add_variable();
+int add_string();
+int add_function();
+
+// HTTP functions
+#ifndef _WIN32
+size_t alwex_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    struct HttpResponse *mem = (struct HttpResponse *)userp;
+    
+    char *ptr = realloc(mem->data, mem->size + realsize + 1);
+    if(!ptr) {
+        printf("Error: not enough memory for HTTP response\n");
+        return 0;
+    }
+    
+    mem->data = ptr;
+    memcpy(&(mem->data[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->data[mem->size] = 0;
+    
+    return realsize;
+}
+#endif
+
+void http_get(const char* url) {
+#ifdef _WIN32
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        printf("Error: cannot initialize WinINet\n");
+        return;
+    }
+    
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, url, NULL, 0, INTERNET_FLAG_RELOAD, 0);
+    if (!hConnect) {
+        printf("Error: cannot connect to URL\n");
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    if (last_http_response.data) free(last_http_response.data);
+    last_http_response.data = malloc(MAX_HTTP_RESPONSE);
+    last_http_response.size = 0;
+    
+    DWORD bytesRead = 0;
+    char buffer[4096];
+    
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        if (last_http_response.size + bytesRead < MAX_HTTP_RESPONSE) {
+            memcpy(last_http_response.data + last_http_response.size, buffer, bytesRead);
+            last_http_response.size += bytesRead;
+        }
+    }
+    
+    last_http_response.data[last_http_response.size] = '\0';
+    
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+#else
+    CURL *curl = curl_easy_init();
+    if(!curl) {
+        printf("Error: cannot initialize curl\n");
+        return;
+    }
+    
+    if (last_http_response.data) free(last_http_response.data);
+    last_http_response.data = malloc(1);
+    last_http_response.size = 0;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.0");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    
+    CURLcode res = curl_easy_perform(curl);
+    if(res != CURLE_OK) {
+        printf("Error: HTTP GET failed: %s\n", curl_easy_strerror(res));
+    }
+    
+    curl_easy_cleanup(curl);
+#endif
+}
+
+void http_post(const char* url, const char* data) {
+#ifdef _WIN32
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        printf("Error: cannot initialize WinINet\n");
+        return;
+    }
+    
+    URL_COMPONENTSA urlComponents;
+    char hostname[256], path[1024];
+    memset(&urlComponents, 0, sizeof(urlComponents));
+    urlComponents.dwStructSize = sizeof(urlComponents);
+    urlComponents.lpszHostName = hostname;
+    urlComponents.dwHostNameLength = sizeof(hostname);
+    urlComponents.lpszUrlPath = path;
+    urlComponents.dwUrlPathLength = sizeof(path);
+    
+    if (!InternetCrackUrlA(url, 0, 0, &urlComponents)) {
+        printf("Error: invalid URL\n");
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    HINTERNET hConnect = InternetConnectA(hInternet, hostname, urlComponents.nPort, 
+                                          NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+    if (!hConnect) {
+        printf("Error: cannot connect to server\n");
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path, NULL, NULL, NULL,
+                                          INTERNET_FLAG_RELOAD, 0);
+    if (!hRequest) {
+        printf("Error: cannot create request\n");
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    const char* headers = "Content-Type: application/x-www-form-urlencoded\r\n";
+    BOOL result = HttpSendRequestA(hRequest, headers, strlen(headers), (LPVOID)data, strlen(data));
+    
+    if (result) {
+        if (last_http_response.data) free(last_http_response.data);
+        last_http_response.data = malloc(MAX_HTTP_RESPONSE);
+        last_http_response.size = 0;
+        
+        DWORD bytesRead = 0;
+        char buffer[4096];
+        
+        while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+            if (last_http_response.size + bytesRead < MAX_HTTP_RESPONSE) {
+                memcpy(last_http_response.data + last_http_response.size, buffer, bytesRead);
+                last_http_response.size += bytesRead;
+            }
+        }
+        
+        last_http_response.data[last_http_response.size] = '\0';
+    }
+    
+    InternetCloseHandle(hRequest);
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+#else
+    CURL *curl = curl_easy_init();
+    if(!curl) {
+        printf("Error: cannot initialize curl\n");
+        return;
+    }
+    
+    if (last_http_response.data) free(last_http_response.data);
+    last_http_response.data = malloc(1);
+    last_http_response.size = 0;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.0");
+    
+    CURLcode res = curl_easy_perform(curl);
+    if(res != CURLE_OK) {
+        printf("Error: HTTP POST failed: %s\n", curl_easy_strerror(res));
+    }
+    
+    curl_easy_cleanup(curl);
+#endif
+}
+
+void http_download(const char* url, const char* filename) {
+#ifdef _WIN32
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        printf("Error: cannot initialize WinINet\n");
+        return;
+    }
+    
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, url, NULL, 0, INTERNET_FLAG_RELOAD, 0);
+    if (!hConnect) {
+        printf("Error: cannot connect to URL\n");
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        printf("Error: cannot create file %s\n", filename);
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        return;
+    }
+    
+    DWORD bytesRead = 0;
+    char buffer[4096];
+    
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        fwrite(buffer, 1, bytesRead, file);
+    }
+    
+    fclose(file);
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+    
+    printf("File downloaded: %s\n", filename);
+#else
+    CURL *curl = curl_easy_init();
+    if(!curl) {
+        printf("Error: cannot initialize curl\n");
+        return;
+    }
+    
+    FILE *fp = fopen(filename, "wb");
+    if(!fp) {
+        printf("Error: cannot create file %s\n", filename);
+        curl_easy_cleanup(curl);
+        return;
+    }
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    
+    CURLcode res = curl_easy_perform(curl);
+    if(res != CURLE_OK) {
+        printf("Error: download failed: %s\n", curl_easy_strerror(res));
+    } else {
+        printf("File downloaded: %s\n", filename);
+    }
+    
+    fclose(fp);
+    curl_easy_cleanup(curl);
+#endif
+}
+
 int my_isspace(int c) {
     return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
 }
@@ -174,7 +434,7 @@ double eval_expression(const char* expr) {
             int i = 0;
             
             while (isalnum(*p) || *p == '_') {
-                if (i < sizeof(var_name) - 1) {
+                if (i < (int)(sizeof(var_name) - 1)) {
                     var_name[i++] = *p;
                 }
                 p++;
@@ -273,6 +533,85 @@ int eval_condition(const char* cond) {
 
 void import_library(const char* libname, int import_depth);
 
+void init_memory() {
+    var_capacity = 10;
+    variables = malloc(var_capacity * sizeof(struct Variable));
+    
+    string_capacity = 10;
+    string_pool = malloc(string_capacity * sizeof(char*));
+    for (int i = 0; i < string_capacity; i++) {
+        string_pool[i] = malloc(STRING_SIZE);
+    }
+    
+    function_capacity = 10;
+    functions = malloc(function_capacity * sizeof(struct Function));
+}
+
+void free_memory() {
+    free(variables);
+    
+    for (int i = 0; i < string_capacity; i++) {
+        free(string_pool[i]);
+    }
+    free(string_pool);
+    
+    for (int i = 0; i < function_count; i++) {
+        free(functions[i].body);
+    }
+    free(functions);
+    
+    if (last_http_response.data) {
+        free(last_http_response.data);
+    }
+}
+
+int add_variable() {
+    if (var_count >= var_capacity) {
+        var_capacity *= 2;
+        variables = realloc(variables, var_capacity * sizeof(struct Variable));
+        if (!variables) {
+            printf("Error: memory allocation failed for variables\n");
+            return -1;
+        }
+    }
+    return var_count++;
+}
+
+int add_string() {
+    if (string_count >= string_capacity) {
+        int new_capacity = string_capacity * 2;
+        char **new_pool = realloc(string_pool, new_capacity * sizeof(char*));
+        if (!new_pool) {
+            printf("Error: memory allocation failed for string pool\n");
+            return -1;
+        }
+        
+        for (int i = string_capacity; i < new_capacity; i++) {
+            new_pool[i] = malloc(STRING_SIZE);
+            if (!new_pool[i]) {
+                printf("Error: memory allocation failed for string %d\n", i);
+                return -1;
+            }
+        }
+        
+        string_pool = new_pool;
+        string_capacity = new_capacity;
+    }
+    return string_count++;
+}
+
+int add_function() {
+    if (function_count >= function_capacity) {
+        function_capacity *= 2;
+        functions = realloc(functions, function_capacity * sizeof(struct Function));
+        if (!functions) {
+            printf("Error: memory allocation failed for functions\n");
+            return -1;
+        }
+    }
+    return function_count++;
+}
+
 void execute(const char* code, int import_depth) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep (max %d levels)\n", MAX_IMPORT_DEPTH);
@@ -319,19 +658,30 @@ void execute(const char* code, int import_depth) {
 
         replace_text_operators(token);
 
+        // ИСПРАВЛЕННАЯ ЛОГИКА ЦИКЛА: endloop теперь работает как break
+        if (strncmp(token, "endloop", 7) == 0) {
+            if (in_loop) {
+                // endloop = break из цикла
+                in_loop = 0;
+                loop_start = NULL;
+            }
+            continue;
+        }
+
         if (in_loop) {
-            if (strncmp(token, "endloop", 7) == 0) {
+            // Проверяем условие цикла в конце итерации
+            // Если мы дошли до конца блока кода и цикл активен, проверяем условие
+            if (*p == '\0' || strstr(p, "while ") == p) {
                 if (eval_condition(loop_condition)) {
                     p = loop_start;
-                    skip_block = 0;
-                    condition_met = 0;
                     continue;
                 } else {
                     in_loop = 0;
                 }
             }
         }
-        else if (strncmp(token, "while ", 6) == 0) {
+
+        if (strncmp(token, "while ", 6) == 0) {
             char* cond = token + 6;
             if (eval_condition(cond)) {
                 in_loop = 1;
@@ -339,6 +689,19 @@ void execute(const char* code, int import_depth) {
                 loop_start = p;
             } else {
                 skip_block = 1;
+                // Пропускаем до endloop или до конца
+                while (*p) {
+                    const char* check = p;
+                    while (*check == ' ' || *check == '\t') check++;
+                    if (strncmp(check, "endloop", 7) == 0) {
+                        p = check + 7;
+                        while (*p && *p != '\n') p++;
+                        if (*p == '\n') p++;
+                        break;
+                    }
+                    p++;
+                }
+                skip_block = 0;
             }
             continue;
         }
@@ -346,8 +709,6 @@ void execute(const char* code, int import_depth) {
         if (strncmp(token, "import ", 7) == 0) {
             char* libname = token + 7;
             while (my_isspace(*libname)) libname++;
-            
-            // Убираем кавычки если есть
             if (*libname == '"' || *libname == '\'') {
                 char quote = *libname;
                 libname++;
@@ -399,7 +760,7 @@ void execute(const char* code, int import_depth) {
             
             int i = 0;
             while (isalnum(*op_ptr) || *op_ptr == '_') {
-                if (i < sizeof(var_name) - 1) {
+                if (i < (int)(sizeof(var_name) - 1)) {
                     var_name[i++] = *op_ptr;
                 }
                 op_ptr++;
@@ -414,7 +775,6 @@ void execute(const char* code, int import_depth) {
         }
 
         else if (strncmp(token, "wait", 4) == 0) {
-            // Пропускаем "wait" и любые пробелы после него
             char* sec_str = token + 4;
             while (*sec_str == ' ' || *sec_str == '\t') sec_str++;
             
@@ -428,6 +788,137 @@ void execute(const char* code, int import_depth) {
                     printf("Error: invalid time value\n");
                 }
             }
+            continue;
+        }
+
+        // HTTP GET
+        else if (strncmp(token, "http_get ", 9) == 0) {
+            char* url = token + 9;
+            while (my_isspace(*url)) url++;
+            
+            if (*url == '"' || *url == '\'') {
+                char quote = *url;
+                url++;
+                char* end_quote = strchr(url, quote);
+                if (end_quote) *end_quote = '\0';
+            }
+            
+            http_get(url);
+            
+            // Сохраняем результат в переменную http_response
+            struct Variable* v = find_variable("http_response");
+            if (!v) {
+                int idx = add_variable();
+                if (idx >= 0) {
+                    v = &variables[idx];
+                    strcpy(v->name, "http_response");
+                }
+            }
+            
+            if (v && last_http_response.data) {
+                int str_idx = add_string();
+                if (str_idx >= 0) {
+                    strncpy(string_pool[str_idx], last_http_response.data, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
+                    v->str_value = string_pool[str_idx];
+                    v->value = (double)last_http_response.size;
+                }
+            }
+            continue;
+        }
+
+        // HTTP POST
+        else if (strncmp(token, "http_post ", 10) == 0) {
+            char* args = token + 10;
+            while (my_isspace(*args)) args++;
+            
+            char url[256] = {0};
+            char data[512] = {0};
+            
+            // Parse URL
+            if (*args == '"' || *args == '\'') {
+                char quote = *args;
+                args++;
+                char* end_quote = strchr(args, quote);
+                if (end_quote) {
+                    strncpy(url, args, end_quote - args);
+                    args = end_quote + 1;
+                }
+            }
+            
+            while (my_isspace(*args)) args++;
+            
+            // Parse data
+            if (*args == '"' || *args == '\'') {
+                char quote = *args;
+                args++;
+                char* end_quote = strchr(args, quote);
+                if (end_quote) {
+                    strncpy(data, args, end_quote - args);
+                }
+            } else {
+                strcpy(data, args);
+            }
+            
+            http_post(url, data);
+            
+            // Сохраняем результат
+            struct Variable* v = find_variable("http_response");
+            if (!v) {
+                int idx = add_variable();
+                if (idx >= 0) {
+                    v = &variables[idx];
+                    strcpy(v->name, "http_response");
+                }
+            }
+            
+            if (v && last_http_response.data) {
+                int str_idx = add_string();
+                if (str_idx >= 0) {
+                    strncpy(string_pool[str_idx], last_http_response.data, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
+                    v->str_value = string_pool[str_idx];
+                    v->value = (double)last_http_response.size;
+                }
+            }
+            continue;
+        }
+
+        // HTTP DOWNLOAD
+        else if (strncmp(token, "http_download ", 14) == 0) {
+            char* args = token + 14;
+            while (my_isspace(*args)) args++;
+            
+            char url[256] = {0};
+            char filename[100] = {0};
+            
+            // Parse URL
+            if (*args == '"' || *args == '\'') {
+                char quote = *args;
+                args++;
+                char* end_quote = strchr(args, quote);
+                if (end_quote) {
+                    strncpy(url, args, end_quote - args);
+                    args = end_quote + 1;
+                }
+            }
+            
+            while (my_isspace(*args)) args++;
+            
+            // Parse filename
+            if (*args == '"' || *args == '\'') {
+                char quote = *args;
+                args++;
+                char* end_quote = strchr(args, quote);
+                if (end_quote) {
+                    strncpy(filename, args, end_quote - args);
+                }
+            } else {
+                strcpy(filename, args);
+            }
+            
+            http_download(url, filename);
+            continue;
         }
 
         if (strncmp(token, "print ", 6) == 0) {
@@ -454,6 +945,7 @@ void execute(const char* code, int import_depth) {
                     printf("Error: variable '%s' not found\n", arg);
                 }
             }
+            continue;
         }
 
         else if (strncmp(token, "let ", 4) == 0) {
@@ -475,8 +967,10 @@ void execute(const char* code, int import_depth) {
                 while (my_isspace(*value_str)) value_str++;
 
                 struct Variable* v = find_variable(var_name);
-                if (!v && var_count < MAX_VARS) {
-                    v = &variables[var_count++];
+                if (!v) {
+                    int idx = add_variable();
+                    if (idx < 0) continue;
+                    v = &variables[idx];
                     strncpy(v->name, var_name, sizeof(v->name));
                     v->name[sizeof(v->name) - 1] = '\0';
                 }
@@ -486,15 +980,15 @@ void execute(const char* code, int import_depth) {
                         char* end_quote = strchr(value_str + 1, '\'');
                         if (end_quote) {
                             *end_quote = '\0';
-                            if (string_count < MAX_STRINGS) {
-                                strncpy(string_pool[string_count], value_str + 1, STRING_SIZE - 1);
-                                string_pool[string_count][STRING_SIZE - 1] = '\0';
-                                v->str_value = string_pool[string_count];
-                                string_count++;
+                            int str_idx = add_string();
+                            if (str_idx >= 0) {
+                                strncpy(string_pool[str_idx], value_str + 1, STRING_SIZE - 1);
+                                string_pool[str_idx][STRING_SIZE - 1] = '\0';
+                                v->str_value = string_pool[str_idx];
+                                v->value = 0;
                             } else {
                                 printf("Error: string pool full\n");
                             }
-                            v->value = 0;
                         } else {
                             printf("Error: unclosed string\n");
                         }
@@ -506,6 +1000,7 @@ void execute(const char* code, int import_depth) {
             } else {
                 printf("Error: expected '=' in let statement\n");
             }
+            continue;
         }
         else if (strncmp(token, "inp ", 4) == 0) {
             char* args = token + 4;
@@ -535,11 +1030,9 @@ void execute(const char* code, int import_depth) {
                 
                 struct Variable* var = find_variable(var_name);
                 if (!var) {
-                    if (var_count >= MAX_VARS) {
-                        printf("Error: too many variables\n");
-                        continue;
-                    }
-                    var = &variables[var_count++];
+                    int idx = add_variable();
+                    if (idx < 0) continue;
+                    var = &variables[idx];
                     strncpy(var->name, var_name, sizeof(var->name));
                     var->name[sizeof(var->name)-1] = '\0';
                 }
@@ -553,26 +1046,26 @@ void execute(const char* code, int import_depth) {
                     var->str_value = NULL;
                 }
                 else if (strcmp(type, "string") == 0) {
-                    if (string_count < MAX_STRINGS) {
-                        strncpy(string_pool[string_count], input_buf, STRING_SIZE);
-                        string_pool[string_count][STRING_SIZE-1] = '\0';
-                        var->str_value = string_pool[string_count];
-                        string_count++;
+                    int str_idx = add_string();
+                    if (str_idx >= 0) {
+                        strncpy(string_pool[str_idx], input_buf, STRING_SIZE);
+                        string_pool[str_idx][STRING_SIZE-1] = '\0';
+                        var->str_value = string_pool[str_idx];
                         var->value = 0;
                     } else {
                         printf("Error: string pool full\n");
                     }
                 }
             }
+            continue;
         }
         else if (strncmp(token, "func ", 5) == 0) {
             char* name = token + 5;
-            if (function_count >= MAX_FUNCTIONS) {
-                printf("Error: too many functions\n");
-                continue;
-            }
             
-            struct Function* func = &functions[function_count++];
+            int func_idx = add_function();
+            if (func_idx < 0) continue;
+            
+            struct Function* func = &functions[func_idx];
             strncpy(func->name, name, sizeof(func->name));
             
             const char* end_ptr = strstr(p, "end");
@@ -582,11 +1075,17 @@ void execute(const char* code, int import_depth) {
             }
             
             int body_size = end_ptr - p;
-            if (body_size >= MAX_FUNC_BODY_SIZE) body_size = MAX_FUNC_BODY_SIZE - 1;
+            func->body = malloc(body_size + 1);
+            if (!func->body) {
+                printf("Error: memory allocation failed for function body\n");
+                continue;
+            }
+            
             memcpy(func->body, p, body_size);
             func->body[body_size] = '\0';
             
             p = end_ptr + 3;
+            continue;
         }
         else if (strncmp(token, "call ", 5) == 0) {
             char* name = token + 5;
@@ -596,6 +1095,94 @@ void execute(const char* code, int import_depth) {
             } else {
                 printf("Error: function not found: %s\n", name);
             }
+            continue;
+        }
+        else if (strncmp(token, "exec ", 5) == 0) {
+            char* command = token + 5;
+            while (my_isspace(*command)) command++;
+            
+            #ifdef _WIN32
+                system(command);
+            #else
+                int result = system(command);
+                if (result == -1) {
+                    printf("Error: failed to execute command\n");
+                }
+            #endif
+            continue;
+        }
+        else if (strncmp(token, "file_write ", 11) == 0) {
+            char* args = token + 11;
+            while (my_isspace(*args)) args++;
+
+            char filename[100];
+            int i = 0;
+            while (*args && !my_isspace(*args) && i < (int)(sizeof(filename) - 1)) {
+                filename[i++] = *args++;
+            }
+            filename[i] = '\0';
+
+            while (my_isspace(*args)) args++;
+
+            FILE* file = fopen(filename, "w");
+            if (file) {
+                fputs(args, file);
+                fclose(file);
+            } else {
+                printf("Error: cannot open file %s for writing\n", filename);
+            }
+            continue;
+        }
+        else if (strncmp(token, "file_read ", 10) == 0) {
+            char* filename = token + 10;
+            while (my_isspace(*filename)) filename++;
+            
+            FILE* file = fopen(filename, "r");
+            if (file) {
+                char buffer[256];
+                while (fgets(buffer, sizeof(buffer), file)) {
+                    printf("%s", buffer);
+                }
+                fclose(file);
+            } else {
+                printf("Error: cannot open file %s for reading\n", filename);
+            }
+            continue;
+        }
+        else if (strncmp(token, "file_append ", 12) == 0) {
+            char* args = token + 12;
+            while (my_isspace(*args)) args++;
+
+            char filename[100];
+            int i = 0;
+            while (*args && !my_isspace(*args) && i < (int)(sizeof(filename) - 1)) {
+                filename[i++] = *args++;
+            }
+            filename[i] = '\0';
+
+            while (my_isspace(*args)) args++;
+
+            FILE* file = fopen(filename, "a");
+            if (file) {
+                fputs(args, file);
+                fclose(file);
+            } else {
+                printf("Error: cannot open file %s for appending\n", filename);
+            }
+            continue;
+        }
+        else if (strncmp(token, "file_exists ", 12) == 0) {
+            char* filename = token + 12;
+            while (my_isspace(*filename)) filename++;
+            
+            FILE* file = fopen(filename, "r");
+            if (file) {
+                fclose(file);
+                printf("true\n");
+            } else {
+                printf("false\n");
+            }
+            continue;
         }
     }
 }
@@ -635,16 +1222,19 @@ void import_library(const char* libname, int import_depth) {
 }
 
 int main(int argc, char* argv[]) {
-    srand(time(NULL)); // Инициализация генератора случайных чисел
+    srand(time(NULL));
     
     if (argc != 2) {
         printf("Usage: %s <script.alw>\n", argv[0]);
         return 1;
     }
+
+    init_memory();
     
     FILE* file = fopen(argv[1], "r");
     if (!file) {
         perror("Error opening file");
+        free_memory();
         return 1;
     }
     
@@ -656,6 +1246,7 @@ int main(int argc, char* argv[]) {
     if (!code) {
         perror("Memory allocation error");
         fclose(file);
+        free_memory();
         return 1;
     }
     
@@ -664,7 +1255,9 @@ int main(int argc, char* argv[]) {
     fclose(file);
     
     execute(code, 0);
+
     free(code);
+    free_memory();
     
     return 0;
 }
