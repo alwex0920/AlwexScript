@@ -26,6 +26,8 @@
 #define MAX_FUNC_BODY_SIZE 4096
 #define MAX_LINE_LEN 1024
 #define MAX_HTTP_RESPONSE 1048576  // 1MB max response
+#define MAX_ARRAY_SIZE 1000
+#define MAX_ARRAYS 100
 
 #ifndef _WIN32
 #define strlcpy(dest, src, size) strncpy(dest, src, size)
@@ -41,11 +43,25 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 }
 #endif
 
+static unsigned long rand_state = 0;
+
 struct Variable {
     char name[50];
     double value;
     char* str_value;
 };
+
+struct Array {
+    char name[50];
+    double values[MAX_ARRAY_SIZE];
+    char* strings[MAX_ARRAY_SIZE];
+    int size;
+    int is_string_array;
+};
+
+static struct Array *arrays = NULL;
+static int array_count = 0;
+static int array_capacity = 0;
 
 struct Function {
     char name[50];
@@ -101,7 +117,7 @@ size_t alwex_write_callback(void *contents, size_t size, size_t nmemb, void *use
 
 void http_get(const char* url) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -146,7 +162,7 @@ void http_get(const char* url) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.2");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     
     CURLcode res = curl_easy_perform(curl);
@@ -160,7 +176,7 @@ void http_get(const char* url) {
 
 void http_post(const char* url, const char* data) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -237,7 +253,7 @@ void http_post(const char* url, const char* data) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.2");
     
     CURLcode res = curl_easy_perform(curl);
     if(res != CURLE_OK) {
@@ -250,7 +266,7 @@ void http_post(const char* url, const char* data) {
 
 void http_download(const char* url, const char* filename) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -312,6 +328,15 @@ void http_download(const char* url, const char* filename) {
     fclose(fp);
     curl_easy_cleanup(curl);
 #endif
+}
+
+int alwex_rand() {
+    rand_state = rand_state * 1103515245 + 12345;
+    return (unsigned int)(rand_state / 65536) % 32768;
+}
+
+void alwex_srand(unsigned int seed) {
+    rand_state = seed;
 }
 
 int my_isspace(int c) {
@@ -409,6 +434,15 @@ struct Function* find_function(const char* name) {
     return NULL;
 }
 
+struct Array* find_array(const char* name) {
+    for (int i = 0; i < array_count; i++) {
+        if (strcmp(arrays[i].name, name) == 0) {
+            return &arrays[i];
+        }
+    }
+    return NULL;
+}
+
 double eval_expression(const char* expr) {
     double result = 0;
     double current = 0;
@@ -422,9 +456,10 @@ double eval_expression(const char* expr) {
             continue;
         }
         
-        if (isdigit(*p) || *p == '.') {
+        if (isdigit(*p) || (*p == '-' && isdigit(*(p+1))) || *p == '.') {
             current = str_to_double(p);
             has_value = 1;
+            if (*p == '-') p++;
             while (isdigit(*p) || *p == '.') p++;
             continue;
         }
@@ -440,23 +475,31 @@ double eval_expression(const char* expr) {
                 p++;
             }
             var_name[i] = '\0';
-            
-            struct Variable* v = find_variable(var_name);
-            if (v) {
-                current = v->str_value ? 0 : v->value;
+
+            if (strcmp(var_name, "__rand_internal") == 0) {
+                current = (double)alwex_rand();
             } else {
-                current = 0;
+                struct Variable* v = find_variable(var_name);
+                if (v) {
+                    current = v->str_value ? 0 : v->value;
+                } else {
+                    current = 0;
+                }
             }
             has_value = 1;
             continue;
         }
         
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '/') {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '%') {
             if (has_value) {
                 switch (op) {
                     case '+': result += current; break;
                     case '-': result -= current; break;
                     case '*': result *= current; break;
+                    case '%': 
+                        if (current != 0) result = (int)result % (int)current;
+                        else printf("Error: modulo by zero\n");
+                        break;
                     case '/': 
                         if (current != 0) result /= current;
                         else printf("Error: division by zero\n");
@@ -469,12 +512,8 @@ double eval_expression(const char* expr) {
             continue;
         }
         
-        if (*p == '+' && *(p+1) == '+') {
-            p += 2;
-            continue;
-        }
-        if (*p == '-' && *(p+1) == '-') {
-            p += 2;
+        if (*p == '(' || *p == ')') {
+            p++;
             continue;
         }
         
@@ -486,9 +525,11 @@ double eval_expression(const char* expr) {
             case '+': result += current; break;
             case '-': result -= current; break;
             case '*': result *= current; break;
+            case '%': 
+                if (current != 0) result = (int)result % (int)current;
+                break;
             case '/': 
                 if (current != 0) result /= current;
-                else printf("Error: division by zero\n");
                 break;
         }
     }
@@ -497,36 +538,97 @@ double eval_expression(const char* expr) {
 }
 
 int eval_condition(const char* cond) {
-    const char* p = cond;
-    char left[50] = {0};
-    char right[50] = {0};
-    char op[3] = {0};
-    int op_pos = 0;
+    const char* operators[] = {"==", "!=", ">=", "<=", ">", "<"};
+    int op_count = 6;
     
-    while (*p) {
-        if (strchr("=><!&|", *p)) {
-            if (op_pos < 2) op[op_pos++] = *p;
-        } else {
-            if (op_pos == 0) strncat(left, p, 1);
-            else strncat(right, p, 1);
+    for (int i = 0; i < op_count; i++) {
+        const char* op_pos = strstr(cond, operators[i]);
+        if (op_pos) {
+            char left[100] = {0};
+            char right[100] = {0};
+            
+            int left_len = op_pos - cond;
+            if (left_len >= 100) left_len = 99;
+            strncpy(left, cond, left_len);
+            left[left_len] = '\0';
+            
+            strcpy(right, op_pos + strlen(operators[i]));
+
+            char* ltrim = left;
+            while (my_isspace(*ltrim)) ltrim++;
+            char* lend = left + strlen(left) - 1;
+            while (lend > left && my_isspace(*lend)) *lend-- = '\0';
+            
+            char* rtrim = right;
+            while (my_isspace(*rtrim)) rtrim++;
+            char* rend = right + strlen(right) - 1;
+            while (rend > right && my_isspace(*rend)) *rend-- = '\0';
+
+            int left_is_string = (*ltrim == '\'' || *ltrim == '"');
+            int right_is_string = (*rtrim == '\'' || *rtrim == '"');
+            
+            if (left_is_string || right_is_string) {
+                char left_str[100] = {0};
+                char right_str[100] = {0};
+                
+                if (left_is_string) {
+                    strcpy(left_str, ltrim + 1);
+                    char* quote_end = strchr(left_str, ltrim[0]);
+                    if (quote_end) *quote_end = '\0';
+                } else {
+                    struct Variable* v = find_variable(ltrim);
+                    if (v && v->str_value) {
+                        strcpy(left_str, v->str_value);
+                    } else if (v) {
+                        snprintf(left_str, sizeof(left_str), "%.0f", v->value);
+                    }
+                }
+                
+                if (right_is_string) {
+                    strcpy(right_str, rtrim + 1);
+                    char* quote_end = strchr(right_str, rtrim[0]);
+                    if (quote_end) *quote_end = '\0';
+                } else {
+                    struct Variable* v = find_variable(rtrim);
+                    if (v && v->str_value) {
+                        strcpy(right_str, v->str_value);
+                    } else if (v) {
+                        snprintf(right_str, sizeof(right_str), "%.0f", v->value);
+                    }
+                }
+                
+                int cmp = strcmp(left_str, right_str);
+                
+                if (strcmp(operators[i], "==") == 0) return cmp == 0;
+                if (strcmp(operators[i], "!=") == 0) return cmp != 0;
+                return 0;
+            } else {
+                double left_val = 0;
+                double right_val = 0;
+
+                if (isdigit(*ltrim) || *ltrim == '-') {
+                    left_val = str_to_double(ltrim);
+                } else {
+                    struct Variable* v = find_variable(ltrim);
+                    if (v) left_val = v->value;
+                }
+
+                if (isdigit(*rtrim) || *rtrim == '-') {
+                    right_val = str_to_double(rtrim);
+                } else {
+                    struct Variable* v = find_variable(rtrim);
+                    if (v) right_val = v->value;
+                }
+                
+                if (strcmp(operators[i], "==") == 0) return left_val == right_val;
+                if (strcmp(operators[i], "!=") == 0) return left_val != right_val;
+                if (strcmp(operators[i], ">=") == 0) return left_val >= right_val;
+                if (strcmp(operators[i], "<=") == 0) return left_val <= right_val;
+                if (strcmp(operators[i], ">") == 0) return left_val > right_val;
+                if (strcmp(operators[i], "<") == 0) return left_val < right_val;
+            }
         }
-        p++;
     }
-    
-    char* ltrim = left;
-    while (my_isspace(*ltrim)) ltrim++;
-    char* rtrim = right;
-    while (my_isspace(*rtrim)) rtrim++;
-    
-    double left_val = str_to_double(ltrim);
-    double right_val = str_to_double(rtrim);
-    
-    if (strcmp(op, "==") == 0) return left_val == right_val;
-    if (strcmp(op, "!=") == 0) return left_val != right_val;
-    if (strcmp(op, ">") == 0) return left_val > right_val;
-    if (strcmp(op, "<") == 0) return left_val < right_val;
-    if (strcmp(op, ">=") == 0) return left_val >= right_val;
-    if (strcmp(op, "<=") == 0) return left_val <= right_val;
     
     return 0;
 }
@@ -545,6 +647,9 @@ void init_memory() {
     
     function_capacity = 10;
     functions = malloc(function_capacity * sizeof(struct Function));
+
+    array_capacity = 10;
+    arrays = calloc(array_capacity, sizeof(struct Array));
 }
 
 void free_memory() {
@@ -559,6 +664,10 @@ void free_memory() {
         free(functions[i].body);
     }
     free(functions);
+
+    if (arrays) {
+        free(arrays);
+    }
     
     if (last_http_response.data) {
         free(last_http_response.data);
@@ -612,6 +721,14 @@ int add_function() {
     return function_count++;
 }
 
+int add_array() {
+    if (array_count >= array_capacity) {
+        array_capacity *= 2;
+        arrays = realloc(arrays, array_capacity * sizeof(struct Array));
+    }
+    return array_count++;
+}
+
 void execute(const char* code, int import_depth) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep (max %d levels)\n", MAX_IMPORT_DEPTH);
@@ -623,6 +740,8 @@ void execute(const char* code, int import_depth) {
 
     int skip_block = 0;
     int condition_met = 0;
+    int condition_stack[20] = {0};
+    int condition_depth = 0;
     int in_loop = 0;
     const char* loop_start = NULL;
     char loop_condition[100] = {0};
@@ -658,10 +777,219 @@ void execute(const char* code, int import_depth) {
 
         replace_text_operators(token);
 
-        // ИСПРАВЛЕННАЯ ЛОГИКА ЦИКЛА: endloop теперь работает как break
+        // ==================== ARRAYS ====================
+        if (strncmp(token, "let ", 4) == 0 && strchr(token, '[') && strchr(token, ']')) {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                char array_name[50] = {0};
+                char* name_start = token + 4;
+                while (my_isspace(*name_start)) name_start++;
+                char* name_end = eq;
+                while (name_end > name_start && my_isspace(*(name_end - 1))) name_end--;
+                
+                int name_len = name_end - name_start;
+                if (name_len >= 50) name_len = 49;
+                strncpy(array_name, name_start, name_len);
+                array_name[name_len] = '\0';
+
+                char* content = eq + 1;
+                while (my_isspace(*content)) content++;
+
+                if (*content == '[') {
+                    struct Array* arr = find_array(array_name);
+                    if (!arr) {
+                        int idx = add_array();
+                        if (idx < 0) continue;
+                        arr = &arrays[idx];
+                        strcpy(arr->name, array_name);
+                        arr->size = 0;
+                        arr->is_string_array = 0;
+                    } else {
+                        arr->size = 0;
+                    }
+
+                    content++;
+                    
+                    while (*content && *content != ']') {
+                        while (my_isspace(*content) || *content == ',') content++;
+                        if (*content == ']') break;
+
+                        if (*content == '\'' || *content == '"') {
+                            char quote = *content;
+                            content++;
+                            char temp_str[STRING_SIZE] = {0};
+                            int str_pos = 0;
+                            
+                            while (*content && *content != quote && str_pos < STRING_SIZE - 1) {
+                                temp_str[str_pos++] = *content++;
+                            }
+                            temp_str[str_pos] = '\0';
+                            
+                            if (*content == quote) content++;
+                            
+                            arr->is_string_array = 1;
+                            int str_idx = add_string();
+                            if (str_idx >= 0 && arr->size < MAX_ARRAY_SIZE) {
+                                strcpy(string_pool[str_idx], temp_str);
+                                arr->strings[arr->size++] = string_pool[str_idx];
+                            }
+                        } 
+
+                        else if (isdigit(*content) || *content == '-' || *content == '.') {
+                            char num_str[50] = {0};
+                            int num_pos = 0;
+                            
+                            if (*content == '-') num_str[num_pos++] = *content++;
+                            
+                            while (*content && (isdigit(*content) || *content == '.') && num_pos < 49) {
+                                num_str[num_pos++] = *content++;
+                            }
+                            num_str[num_pos] = '\0';
+                            
+                            if (arr->size < MAX_ARRAY_SIZE) {
+                                arr->values[arr->size++] = str_to_double(num_str);
+                            }
+                        } else {
+                            content++;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        // arr_get arr 0
+        else if (strncmp(token, "arr_get ", 8) == 0) {
+            char* args = token + 8;
+            char array_name[50] = {0};
+            int index = -1;
+            
+            sscanf(args, "%49s %d", array_name, &index);
+            
+            struct Array* arr = find_array(array_name);
+            if (arr && index >= 0 && index < arr->size) {
+                struct Variable* v = find_variable("arr_get_result");
+                if (!v) {
+                    int idx = add_variable();
+                    if (idx < 0) continue;
+                    v = &variables[idx];
+                    strcpy(v->name, "arr_get_result");
+                }
+                
+                if (arr->is_string_array) {
+                    int str_idx = add_string();
+                    if (str_idx >= 0) {
+                        strcpy(string_pool[str_idx], arr->strings[index]);
+                        v->str_value = string_pool[str_idx];
+                        v->value = 0;
+                    }
+                } else {
+                    v->value = arr->values[index];
+                    v->str_value = NULL;
+                }
+            }
+            continue;
+        }
+
+        // arr_set arr 0 100
+        else if (strncmp(token, "arr_set ", 8) == 0) {
+            char* args = token + 8;
+            char array_name[50] = {0};
+            int index = -1;
+            double value = 0;
+            
+            sscanf(args, "%49s %d %lf", array_name, &index, &value);
+            
+            struct Array* arr = find_array(array_name);
+            if (arr && index >= 0 && index < arr->size && !arr->is_string_array) {
+                arr->values[index] = value;
+            }
+            continue;
+        }
+
+        // arr_length arr
+        else if (strncmp(token, "arr_length ", 11) == 0) {
+            char* args = token + 11;
+            while (my_isspace(*args)) args++;
+
+            char array_name[50] = {0};
+            int i = 0;
+            while (*args && !my_isspace(*args) && i < 49) {
+                array_name[i++] = *args++;
+            }
+            array_name[i] = '\0';
+            
+            struct Array* arr = find_array(array_name);
+            if (arr) {
+                struct Variable* v = find_variable("arr_length_result");
+                if (!v) {
+                    int idx = add_variable();
+                    if (idx < 0) continue;
+                    v = &variables[idx];
+                    strcpy(v->name, "arr_length_result");
+                }
+                v->value = arr->size;
+                v->str_value = NULL;
+            }
+            continue;
+        }
+
+        // arr_push arr 42
+        else if (strncmp(token, "arr_push ", 9) == 0) {
+            char* args = token + 9;
+            char array_name[50] = {0};
+            
+            char* space = strchr(args, ' ');
+            if (space) {
+                int name_len = space - args;
+                if (name_len >= 50) name_len = 49;
+                strncpy(array_name, args, name_len);
+                array_name[name_len] = '\0';
+                
+                struct Array* arr = find_array(array_name);
+                if (arr && arr->size < MAX_ARRAY_SIZE) {
+                    char* value_str = space + 1;
+                    while (my_isspace(*value_str)) value_str++;
+                    
+                    if (*value_str == '\'' || *value_str == '"') {
+                        char quote = *value_str;
+                        value_str++;
+                        char* end_quote = strchr(value_str, quote);
+                        if (end_quote) {
+                            *end_quote = '\0';
+                            arr->is_string_array = 1;
+                            int str_idx = add_string();
+                            if (str_idx >= 0) {
+                                strcpy(string_pool[str_idx], value_str);
+                                arr->strings[arr->size++] = string_pool[str_idx];
+                            }
+                        }
+                    } else {
+                        arr->values[arr->size++] = str_to_double(value_str);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // ==================== RANDOM ====================
+        else if (strcmp(token, "let __rand_internal = 0") == 0 || 
+                 strstr(token, "__rand_internal")) {
+            struct Variable* v = find_variable("__rand_internal");
+            if (!v) {
+                int idx = add_variable();
+                if (idx < 0) continue;
+                v = &variables[idx];
+                strcpy(v->name, "__rand_internal");
+            }
+            v->value = rand() % 32768;
+            v->str_value = NULL;
+            continue;
+        }
+
+        // ==================== ENDLOOP = BREAK ====================
         if (strncmp(token, "endloop", 7) == 0) {
             if (in_loop) {
-                // endloop = break из цикла
                 in_loop = 0;
                 loop_start = NULL;
             }
@@ -669,8 +997,6 @@ void execute(const char* code, int import_depth) {
         }
 
         if (in_loop) {
-            // Проверяем условие цикла в конце итерации
-            // Если мы дошли до конца блока кода и цикл активен, проверяем условие
             if (*p == '\0' || strstr(p, "while ") == p) {
                 if (eval_condition(loop_condition)) {
                     p = loop_start;
@@ -681,6 +1007,7 @@ void execute(const char* code, int import_depth) {
             }
         }
 
+        // ==================== WHILE ====================
         if (strncmp(token, "while ", 6) == 0) {
             char* cond = token + 6;
             if (eval_condition(cond)) {
@@ -689,7 +1016,6 @@ void execute(const char* code, int import_depth) {
                 loop_start = p;
             } else {
                 skip_block = 1;
-                // Пропускаем до endloop или до конца
                 while (*p) {
                     const char* check = p;
                     while (*check == ' ' || *check == '\t') check++;
@@ -706,6 +1032,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
+        // ==================== IMPORT ====================
         if (strncmp(token, "import ", 7) == 0) {
             char* libname = token + 7;
             while (my_isspace(*libname)) libname++;
@@ -720,22 +1047,34 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
+        // ==================== IF/ELSE ====================
         if (strncmp(token, "if ", 3) == 0) {
             char* cond = token + 3;
-            if (eval_condition(cond)) {
-                condition_met = 1;
-            } else {
+            int cond_result = eval_condition(cond);
+
+            if (condition_depth < 20) {
+                condition_stack[condition_depth++] = cond_result;
+            }
+            
+            if (!cond_result) {
                 skip_block = 1;
             }
             continue;
         }
         else if (strncmp(token, "else if ", 8) == 0) {
-            if (condition_met) {
+            int previous_met = 0;
+            if (condition_depth > 0) {
+                previous_met = condition_stack[condition_depth - 1];
+            }
+            
+            if (previous_met) {
                 skip_block = 1;
             } else {
                 char* cond = token + 8;
-                if (eval_condition(cond)) {
-                    condition_met = 1;
+                int cond_result = eval_condition(cond);
+                
+                if (cond_result) {
+                    condition_stack[condition_depth - 1] = 1;
                     skip_block = 0;
                 } else {
                     skip_block = 1;
@@ -743,39 +1082,66 @@ void execute(const char* code, int import_depth) {
             }
             continue;
         }
-        else if (strncmp(token, "else", 4) == 0) {
-            if (condition_met) skip_block = 1;
-            else skip_block = 0;
+        else if (strncmp(token, "else", 4) == 0 && token[4] != ' ' && token[4] != 'i') {
+            int previous_met = 0;
+            if (condition_depth > 0) {
+                previous_met = condition_stack[condition_depth - 1];
+            }
+            
+            if (previous_met) {
+                skip_block = 1;
+            } else {
+                skip_block = 0;
+                if (condition_depth > 0) {
+                    condition_stack[condition_depth - 1] = 1;
+                }
+            }
             continue;
         }
-        else if (strncmp(token, "end", 3) == 0) {
-            condition_met = 0;
+        else if (strncmp(token, "end", 3) == 0 && strncmp(token, "endloop", 7) != 0) {
+            if (condition_depth > 0) {
+                condition_depth--;
+            }
+            skip_block = 0;
             continue;
         }
 
+        // ==================== INC/DEC ====================
         if (strstr(token, "++") || strstr(token, "--")) {
             char var_name[50] = {0};
-            char* op_ptr = token;
-            while (*op_ptr && !isalnum(*op_ptr) && !(*op_ptr == '_')) op_ptr++;
-            
+            int is_increment = strstr(token, "++") != NULL;
+
+            char* start = token;
+            while (my_isspace(*start)) start++;
+
             int i = 0;
-            while (isalnum(*op_ptr) || *op_ptr == '_') {
-                if (i < (int)(sizeof(var_name) - 1)) {
-                    var_name[i++] = *op_ptr;
-                }
-                op_ptr++;
+            while (*start && (isalnum(*start) || *start == '_') && i < 49) {
+                var_name[i++] = *start++;
             }
+            var_name[i] = '\0';
+
+            while (my_isspace(*start)) start++;
             
-            struct Variable* v = find_variable(var_name);
-            if (v) {
-                if (strstr(token, "++")) v->value += 1;
-                else v->value -= 1;
+            if ((is_increment && strncmp(start, "++", 2) == 0) ||
+                (!is_increment && strncmp(start, "--", 2) == 0)) {
+                
+                struct Variable* v = find_variable(var_name);
+                if (v) {
+                    if (is_increment) {
+                        v->value += 1;
+                    } else {
+                        v->value -= 1;
+                    }
+                } else {
+                    printf("Error: variable '%s' not found\n", var_name);
+                }
             }
             continue;
         }
 
-        else if (strncmp(token, "wait", 4) == 0) {
-            char* sec_str = token + 4;
+        // ==================== WAIT ====================
+        else if (strncmp(token, "wait ", 5) == 0) {
+            char* sec_str = token + 5;
             while (*sec_str == ' ' || *sec_str == '\t') sec_str++;
             
             if (*sec_str == '\0') {
@@ -791,7 +1157,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
-        // HTTP GET
+        // ==================== HTTP GET ====================
         else if (strncmp(token, "http_get ", 9) == 0) {
             char* url = token + 9;
             while (my_isspace(*url)) url++;
@@ -805,7 +1171,6 @@ void execute(const char* code, int import_depth) {
             
             http_get(url);
             
-            // Сохраняем результат в переменную http_response
             struct Variable* v = find_variable("http_response");
             if (!v) {
                 int idx = add_variable();
@@ -827,7 +1192,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
-        // HTTP POST
+        // ==================== HTTP POST ====================
         else if (strncmp(token, "http_post ", 10) == 0) {
             char* args = token + 10;
             while (my_isspace(*args)) args++;
@@ -835,7 +1200,6 @@ void execute(const char* code, int import_depth) {
             char url[256] = {0};
             char data[512] = {0};
             
-            // Parse URL
             if (*args == '"' || *args == '\'') {
                 char quote = *args;
                 args++;
@@ -848,7 +1212,6 @@ void execute(const char* code, int import_depth) {
             
             while (my_isspace(*args)) args++;
             
-            // Parse data
             if (*args == '"' || *args == '\'') {
                 char quote = *args;
                 args++;
@@ -862,7 +1225,6 @@ void execute(const char* code, int import_depth) {
             
             http_post(url, data);
             
-            // Сохраняем результат
             struct Variable* v = find_variable("http_response");
             if (!v) {
                 int idx = add_variable();
@@ -884,7 +1246,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
-        // HTTP DOWNLOAD
+        // ==================== HTTP DOWNLOAD ====================
         else if (strncmp(token, "http_download ", 14) == 0) {
             char* args = token + 14;
             while (my_isspace(*args)) args++;
@@ -892,7 +1254,6 @@ void execute(const char* code, int import_depth) {
             char url[256] = {0};
             char filename[100] = {0};
             
-            // Parse URL
             if (*args == '"' || *args == '\'') {
                 char quote = *args;
                 args++;
@@ -905,7 +1266,6 @@ void execute(const char* code, int import_depth) {
             
             while (my_isspace(*args)) args++;
             
-            // Parse filename
             if (*args == '"' || *args == '\'') {
                 char quote = *args;
                 args++;
@@ -921,6 +1281,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
+        // ==================== PRINT ====================
         if (strncmp(token, "print ", 6) == 0) {
             char* arg = token + 6;
             while (my_isspace(*arg)) arg++;
@@ -933,7 +1294,62 @@ void execute(const char* code, int import_depth) {
                 } else {
                     printf("Error: unclosed string\n");
                 }
-            } else {
+            } 
+
+            else if (strchr(arg, '[')) {
+                char array_name[50] = {0};
+                int index = -1;
+
+                char* bracket_start = strchr(arg, '[');
+                char* bracket_end = strchr(arg, ']');
+                
+                if (bracket_start && bracket_end) {
+
+                    int name_len = bracket_start - arg;
+                    if (name_len >= 50) name_len = 49;
+                    strncpy(array_name, arg, name_len);
+                    array_name[name_len] = '\0';
+
+                    char* trim_start = array_name;
+                    while (*trim_start && my_isspace(*trim_start)) trim_start++;
+                    if (trim_start != array_name) {
+                        memmove(array_name, trim_start, strlen(trim_start) + 1);
+                    }
+                    char* trim_end = array_name + strlen(array_name) - 1;
+                    while (trim_end > array_name && my_isspace(*trim_end)) {
+                        *trim_end = '\0';
+                        trim_end--;
+                    }
+
+                    char index_str[20] = {0};
+                    int idx_len = bracket_end - bracket_start - 1;
+                    if (idx_len > 0 && idx_len < 20) {
+                        strncpy(index_str, bracket_start + 1, idx_len);
+                        index_str[idx_len] = '\0';
+                        index = atoi(index_str);
+                    }
+
+                    struct Array* arr = find_array(array_name);
+                    if (arr) {
+                        if (index >= 0 && index < arr->size) {
+                            if (arr->is_string_array) {
+                                printf("%s\n", arr->strings[index]);
+                            } else {
+                                print_double(arr->values[index]);
+                                printf("\n");
+                            }
+                        } else {
+                            printf("Error: array '%s' index %d out of bounds (size: %d)\n", 
+                                array_name, index, arr->size);
+                        }
+                    } else {
+                        printf("Error: array '%s' not found\n", array_name);
+                    }
+                } else {
+                    printf("Error: invalid array syntax\n");
+                }
+            }
+            else {
                 struct Variable* v = find_variable(arg);
                 if (v) {
                     if (v->str_value) printf("%s\n", v->str_value);
@@ -948,7 +1364,8 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
-        else if (strncmp(token, "let ", 4) == 0) {
+        // ==================== LET ====================
+        else if (strncmp(token, "let ", 4) == 0 && !strchr(token, '[')) {
             char* eq = strchr(token, '=');
             if (eq) {
                 char var_name[50];
@@ -992,7 +1409,12 @@ void execute(const char* code, int import_depth) {
                         } else {
                             printf("Error: unclosed string\n");
                         }
-                    } else {
+                    } 
+                    else if (strstr(value_str, "__rand_internal")) {
+                        v->value = eval_expression(value_str);
+                        v->str_value = NULL;
+                    }
+                    else {
                         v->value = eval_expression(value_str);
                         v->str_value = NULL;
                     }
@@ -1002,6 +1424,8 @@ void execute(const char* code, int import_depth) {
             }
             continue;
         }
+
+        // ==================== INP ====================
         else if (strncmp(token, "inp ", 4) == 0) {
             char* args = token + 4;
             char type[16];
@@ -1059,6 +1483,8 @@ void execute(const char* code, int import_depth) {
             }
             continue;
         }
+
+        // ==================== FUNC ====================
         else if (strncmp(token, "func ", 5) == 0) {
             char* name = token + 5;
             
@@ -1087,16 +1513,81 @@ void execute(const char* code, int import_depth) {
             p = end_ptr + 3;
             continue;
         }
+
+        // ==================== CALL ====================
         else if (strncmp(token, "call ", 5) == 0) {
-            char* name = token + 5;
-            struct Function* func = find_function(name);
+            char* args = token + 5;
+            char func_name[50] = {0};
+
+            int i = 0;
+            while (*args && !my_isspace(*args) && i < 49) {
+                func_name[i++] = *args++;
+            }
+            func_name[i] = '\0';
+            
+            struct Function* func = find_function(func_name);
             if (func) {
+
+                struct Variable saved_vars[10];
+                int saved_count = 0;
+
+                while (*args && my_isspace(*args)) args++;
+                
+                char* param_names[] = {"min", "max", "arr", "index", "value", "len", "a", "b", "c", "d"};
+                int param_idx = 0;
+                
+                while (*args && param_idx < 10) {
+                    while (*args && my_isspace(*args)) args++;
+                    if (!*args) break;
+
+                    char param_value[100] = {0};
+                    int j = 0;
+                    while (*args && !my_isspace(*args) && j < 99) {
+                        param_value[j++] = *args++;
+                    }
+                    param_value[j] = '\0';
+
+                    struct Variable* param_var = find_variable(param_names[param_idx]);
+                    if (!param_var) {
+                        int idx = add_variable();
+                        if (idx < 0) break;
+                        param_var = &variables[idx];
+                        strcpy(param_var->name, param_names[param_idx]);
+                    } else {
+                        saved_vars[saved_count] = *param_var;
+                        saved_count++;
+                    }
+
+                    if (isdigit(param_value[0]) || param_value[0] == '-') {
+                        param_var->value = str_to_double(param_value);
+                        param_var->str_value = NULL;
+                    } else {
+
+                        struct Variable* source_var = find_variable(param_value);
+                        if (source_var) {
+                            param_var->value = source_var->value;
+                            param_var->str_value = source_var->str_value;
+                        }
+                    }
+                    
+                    param_idx++;
+                }
+
                 execute(func->body, import_depth);
+
+                for (int k = 0; k < saved_count; k++) {
+                    struct Variable* v = find_variable(saved_vars[k].name);
+                    if (v) {
+                        *v = saved_vars[k];
+                    }
+                }
             } else {
-                printf("Error: function not found: %s\n", name);
+                printf("Error: function not found: %s\n", func_name);
             }
             continue;
         }
+
+        // ==================== EXEC ====================
         else if (strncmp(token, "exec ", 5) == 0) {
             char* command = token + 5;
             while (my_isspace(*command)) command++;
@@ -1111,6 +1602,8 @@ void execute(const char* code, int import_depth) {
             #endif
             continue;
         }
+
+        // ==================== FILE OPERATIONS ====================
         else if (strncmp(token, "file_write ", 11) == 0) {
             char* args = token + 11;
             while (my_isspace(*args)) args++;
@@ -1222,7 +1715,7 @@ void import_library(const char* libname, int import_depth) {
 }
 
 int main(int argc, char* argv[]) {
-    srand(time(NULL));
+    alwex_srand((unsigned int)(time(NULL) ^ (clock() << 16)));
     
     if (argc != 2) {
         printf("Usage: %s <script.alw>\n", argv[0]);
