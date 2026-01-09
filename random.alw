@@ -1,19 +1,31 @@
-# Библиотека случайных чисел для AlwexScript
-
-func randint min max
+# randint min max
+func randint
+    let rand_val = __rand_internal
     let range = max - min + 1
-    let num = __sys_rand()
-    let result = min + (num % range)
+    let mod_val = rand_val % range
+    let result = min + mod_val
     let randint_result = result
 end
 
+# random
 func random
-    let num = __sys_rand()
-    let result = num / 32767.0
+    let rand_val = __rand_internal
+    let result = rand_val / 32767.0
     let random_result = result
 end
 
-func __sys_rand
-    # Системная функция (реализована в интерпретаторе)
-    let __sys_rand_result = 0
+# choice arr
+func choice
+    arr_length arr
+    let len = arr_length_result
+    
+    if len == 0
+        let choice_result = 0
+    else
+        let max_idx = len - 1
+        call randint 0 max_idx
+        let index = randint_result
+        arr_get arr index
+        let choice_result = arr_get_result
+    end
 end
