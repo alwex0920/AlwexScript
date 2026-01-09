@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 2.1
+**Version**: 2.2
 **Supported OS**: Windows, Linux, macOS
-**Latest Updates**: Added interaction with websites in the form of GET and POST, as well as downloading files
+**Latest Updates**: Added arrays support
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -14,6 +14,8 @@
 - Terminal command execution
 - File operations (read, write, append, check existence)
 - Dynamic memory management (Unix systems)
+- Arrays: full support for lists of data
+- Loop control: endloop works as break statement
 
 ## Installation
 ### Linux/macOS
@@ -97,7 +99,7 @@ file_append data.txt "Additional content"
 # Check file existence
 file_exists data.txt
 ```
-### HTTP interaction (New in v2.1)
+### HTTP interaction
 ```alw
 # GET
 http_get <url>
@@ -105,6 +107,27 @@ http_get <url>
 http_post <url> <data>
 # Download file
 http_download <url> <filename>
+```
+### Arrays (New in v2.2)
+```alw
+# Create array
+let fruits = ['apple', 'banana', 'orange']
+let scores = [85, 92, 78, 95]
+
+# Access elements
+print fruits[0]      # Output: apple
+print scores[2]      # Output: 78
+
+# Array operations
+arr_get fruits 1            # Get element at index 1
+print arr_get_result        # Output: banana
+
+arr_set scores 0 100        # Set scores[0] = 100
+
+arr_length fruits           # Get array length
+print arr_length_result     # Output: 3
+
+arr_push scores 88          # Add element to end
 ```
 ### Operators
 ## Arithmetic: +, -, *, /, plus, minus, mul, div
@@ -131,27 +154,36 @@ print choice_result
 ```
 # Example Program with Import
 ```alw
-# Random password generator
 import "random"
 
 func generate_password length
-    let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+    let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%'
     let password = ''
     
     let i = 0
     while i < length
-        call randint 0 strlen(chars)-1
+        arr_length chars
+        let max_idx = arr_length_result - 1
+        
+        call randint 0 max_idx
         let idx = randint_result
-        let char = chars[idx]
-        let password = password + char
+        arr_get chars idx
+        
+        let password = password + arr_get_result
         let i = i + 1
     endloop
     
     let generate_password_result = password
 end
 
+# Generate and save password
 inp int pwd_len 'Enter password length: '
 call generate_password pwd_len
+
+file_write password.txt generate_password_result
+print 'Password saved to password.txt'
+
+file_read password.txt
 ```
 
 # Save password to file
@@ -209,6 +241,7 @@ alwex.exe program.alw
 - Repository: https://github.com/alwex0920/AlwexScript
 
 ## Version History
+- v2.2: Added arrays support
 - v2.1: Added interaction with websites in the form of GET and POST, as well as downloading files
 - v2.0: Added terminal command execution, file operations, and dynamic memory management for Unix systems
 - v1.2: Added wait command
