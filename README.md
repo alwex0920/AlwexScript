@@ -241,7 +241,8 @@ alwex.exe program.alw
 - Repository: https://github.com/alwex0920/AlwexScript
 
 ## Telegram
-- https://t.me/alwexscript
+- https://t.me/AlwexScript
+- https://t.me/AlwexScriptChat
 
 ## Version History
 - v2.2: Added arrays support
