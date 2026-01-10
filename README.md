@@ -240,6 +240,9 @@ alwex.exe program.alw
 - License: MIT
 - Repository: https://github.com/alwex0920/AlwexScript
 
+## Telegram
+- https://t.me/alwexscript
+
 ## Version History
 - v2.2: Added arrays support
 - v2.1: Added interaction with websites in the form of GET and POST, as well as downloading files
