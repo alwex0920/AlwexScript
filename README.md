@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 2.2
+**Version**: 3.0
 **Supported OS**: Windows, Linux, macOS
-**Latest Updates**: Added arrays support
+**Latest Updates**: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -16,6 +16,7 @@
 - Dynamic memory management (Unix systems)
 - Arrays: full support for lists of data
 - Loop control: endloop works as break statement
+- Install library
 
 ## Installation
 ### Linux/macOS
@@ -108,7 +109,7 @@ http_post <url> <data>
 # Download file
 http_download <url> <filename>
 ```
-### Arrays (New in v2.2)
+### Arrays
 ```alw
 # Create array
 let fruits = ['apple', 'banana', 'orange']
@@ -139,18 +140,26 @@ arr_push scores 88          # Add element to end
 ### Standard Libraries
 random.alw Library
 ```alw
-# Generates random integer in range [min, max]
-call randint min max
-print randint_result
+func randint
+    let __rand_internal = 0
+    let temp1 = max - min
+    let range = temp1 + 1
+    let temp2 = __rand_internal % range
+    let randint_result = min + temp2
+end
 
-# Generates random float (0, 1)
-call random
-print random_result
+func random
+    let __rand_internal = 0
+    let random_result = __rand_internal / 32768.0
+end
 
-# Selects random element from array
-let colors = ['red', 'green', 'blue']
-call choice colors
-print choice_result
+func choice
+    arr_length arr
+    let __rand_internal = 0
+    let idx = __rand_internal % arr_length_result
+    arr_get arr idx
+    let choice_result = arr_get_result
+end
 ```
 # Example Program with Import
 ```alw
@@ -211,6 +220,11 @@ alwex.exe program.alw
 
 3. Place library files in the same directory to use them
 
+4. If you need to install the library:
+```bash
+alwex install name_lib
+``` 
+
 ## System Requirements
 - Any OS with GCC compiler (Windows, Linux, macOS)
 - 512 KB RAM
@@ -221,10 +235,10 @@ alwex.exe program.alw
 # Dynamic memory management - No hard limits on variables, strings, and functions
 
 ## Increased limits:
-- Variables: 10,000 (was 100)
-- Strings: 1,000 (was 30)
-- Functions: 500 (was 15)
-- Import depth: 50 levels (was 5)
+- Variables: 10,000
+- Strings: 1,000
+- Functions: 500
+- Import depth: 50 levels
 
 ## Terminal command execution with exec command
 
@@ -245,6 +259,7 @@ alwex.exe program.alw
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.0: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
 - v2.2: Added arrays support
 - v2.1: Added interaction with websites in the form of GET and POST, as well as downloading files
 - v2.0: Added terminal command execution, file operations, and dynamic memory management for Unix systems
