@@ -3,10 +3,13 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
     #include <windows.h>
     #include <wininet.h>
+    #include <direct.h>
     #pragma comment(lib, "wininet.lib")
     #define sleep(seconds) Sleep(seconds * 1000)
     #define MAX_VARS 1000
@@ -87,6 +90,8 @@ static int function_count = 0;
 static int function_capacity = 0;
 
 static struct HttpResponse last_http_response = {NULL, 0};
+static char current_script_dir[512] = {0};
+static char interpreter_dir[512] = {0};
 
 void init_memory();
 void free_memory();
@@ -117,7 +122,7 @@ size_t alwex_write_callback(void *contents, size_t size, size_t nmemb, void *use
 
 void http_get(const char* url) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -162,7 +167,7 @@ void http_get(const char* url) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.2");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     
     CURLcode res = curl_easy_perform(curl);
@@ -176,7 +181,7 @@ void http_get(const char* url) {
 
 void http_post(const char* url, const char* data) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -253,7 +258,7 @@ void http_post(const char* url, const char* data) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/2.2");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0");
     
     CURLcode res = curl_easy_perform(curl);
     if(res != CURLE_OK) {
@@ -266,7 +271,7 @@ void http_post(const char* url, const char* data) {
 
 void http_download(const char* url, const char* filename) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/2.2", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -359,6 +364,7 @@ double str_to_double(const char* s) {
             point_seen = 1;
             continue;
         }
+        
         int d = *s - '0';
         if (d >= 0 && d <= 9) {
             if (point_seen) {
@@ -367,6 +373,8 @@ double str_to_double(const char* s) {
             } else {
                 res = res * 10.0 + (double)d;
             }
+        } else {
+            break;
         }
     }
     return negative ? -res : res;
@@ -443,97 +451,130 @@ struct Array* find_array(const char* name) {
     return NULL;
 }
 
-double eval_expression(const char* expr) {
-    double result = 0;
-    double current = 0;
-    char op = '+';
-    int has_value = 0;
-    
-    const char* p = expr;
-    while (*p) {
-        if (my_isspace(*p)) {
-            p++;
-            continue;
-        }
-        
-        if (isdigit(*p) || (*p == '-' && isdigit(*(p+1))) || *p == '.') {
-            current = str_to_double(p);
-            has_value = 1;
-            if (*p == '-') p++;
-            while (isdigit(*p) || *p == '.') p++;
-            continue;
-        }
-        
-        if (isalpha(*p) || *p == '_') {
-            char var_name[50] = {0};
-            int i = 0;
-            
-            while (isalnum(*p) || *p == '_') {
-                if (i < (int)(sizeof(var_name) - 1)) {
-                    var_name[i++] = *p;
-                }
-                p++;
-            }
-            var_name[i] = '\0';
+double parse_expression(const char** p);
+double parse_term(const char** p);
+double parse_factor(const char** p);
 
-            if (strcmp(var_name, "__rand_internal") == 0) {
-                current = (double)alwex_rand();
+void skip_whitespace(const char** p) {
+    while (**p && my_isspace(**p)) {
+        (*p)++;
+    }
+}
+
+double parse_factor(const char** p) {
+    skip_whitespace(p);
+
+    int negative = 0;
+    if (**p == '-') {
+        negative = 1;
+        (*p)++;
+        skip_whitespace(p);
+    }
+    
+    double result = 0;
+    
+    if (**p == '(') {
+        (*p)++;
+        result = parse_expression(p);
+        skip_whitespace(p);
+        if (**p == ')') {
+            (*p)++;
+        }
+    }
+
+    else if (isdigit(**p) || **p == '.') {
+        result = str_to_double(*p);
+        while (isdigit(**p) || **p == '.') {
+            (*p)++;
+        }
+    }
+
+    else if (isalpha(**p) || **p == '_') {
+        char var_name[50] = {0};
+        int i = 0;
+        
+        while ((isalnum(**p) || **p == '_') && i < 49) {
+            var_name[i++] = **p;
+            (*p)++;
+        }
+        var_name[i] = '\0';
+        
+        if (strcmp(var_name, "__rand_internal") == 0) {
+            result = (double)alwex_rand();
+        } else {
+            struct Variable* v = find_variable(var_name);
+            if (v) {
+                result = v->str_value ? 0 : v->value;
             } else {
-                struct Variable* v = find_variable(var_name);
-                if (v) {
-                    current = v->str_value ? 0 : v->value;
-                } else {
-                    current = 0;
-                }
+                result = 0;
             }
-            has_value = 1;
-            continue;
-        }
-        
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '%') {
-            if (has_value) {
-                switch (op) {
-                    case '+': result += current; break;
-                    case '-': result -= current; break;
-                    case '*': result *= current; break;
-                    case '%': 
-                        if (current != 0) result = (int)result % (int)current;
-                        else printf("Error: modulo by zero\n");
-                        break;
-                    case '/': 
-                        if (current != 0) result /= current;
-                        else printf("Error: division by zero\n");
-                        break;
-                }
-                op = *p;
-                has_value = 0;
-            }
-            p++;
-            continue;
-        }
-        
-        if (*p == '(' || *p == ')') {
-            p++;
-            continue;
-        }
-        
-        p++;
-    }
-    
-    if (has_value) {
-        switch (op) {
-            case '+': result += current; break;
-            case '-': result -= current; break;
-            case '*': result *= current; break;
-            case '%': 
-                if (current != 0) result = (int)result % (int)current;
-                break;
-            case '/': 
-                if (current != 0) result /= current;
-                break;
         }
     }
     
+    return negative ? -result : result;
+}
+
+double parse_term(const char** p) {
+    double result = parse_factor(p);
+    
+    while (1) {
+        skip_whitespace(p);
+        
+        if (**p == '*') {
+            (*p)++;
+            result *= parse_factor(p);
+        }
+        else if (**p == '/') {
+            (*p)++;
+            double divisor = parse_factor(p);
+            if (divisor != 0) {
+                result /= divisor;
+            } else {
+                printf("Error: division by zero\n");
+            }
+        }
+        else if (**p == '%') {
+            (*p)++;
+            double divisor = parse_factor(p);
+            if (divisor != 0) {
+                result = (int)result % (int)divisor;
+            } else {
+                printf("Error: modulo by zero\n");
+            }
+        }
+        else {
+            break;
+        }
+    }
+    
+    return result;
+}
+
+double parse_expression(const char** p) {
+    double result = parse_term(p);
+    
+    while (1) {
+        skip_whitespace(p);
+        
+        if (**p == '+') {
+            (*p)++;
+            result += parse_term(p);
+        }
+        else if (**p == '-') {
+            (*p)++;
+            result -= parse_term(p);
+        }
+        else {
+            break;
+        }
+    }
+    
+    return result;
+}
+
+double eval_expression(const char* expr) {
+    const char* p = expr;
+    double result = parse_expression(&p);
     return result;
 }
 
@@ -739,7 +780,6 @@ void execute(const char* code, int import_depth) {
     const char* p = code;
 
     int skip_block = 0;
-    int condition_met = 0;
     int condition_stack[20] = {0};
     int condition_depth = 0;
     int in_loop = 0;
@@ -763,19 +803,95 @@ void execute(const char* code, int import_depth) {
 
         if (*token == '\0' || *token == '#') continue;
 
-        if (skip_block) {
-            if (strncmp(token, "end", 3) == 0) {
-                skip_block = 0;
-                condition_met = 0;
+        replace_text_operators(token);
+
+        // ==================== IF/ELSE ====================
+        if (strncmp(token, "if ", 3) == 0) {
+            char* cond = token + 3;
+            int cond_result = eval_condition(cond);
+
+            if (condition_depth < 20) {
+                condition_stack[condition_depth++] = cond_result;
             }
-            else if (strncmp(token, "endloop", 7) == 0) {
+            
+            if (!cond_result) {
+                skip_block = 1;
+            }
+            continue;
+        }
+        else if (strncmp(token, "elif ", 5) == 0) {
+            int previous_met = 0;
+            if (condition_depth > 0) {
+                previous_met = condition_stack[condition_depth - 1];
+            }
+            
+            if (previous_met) {
+                skip_block = 1;
+            } else {
+                char* cond = token + 5;
+                int cond_result = eval_condition(cond);
+                
+                if (cond_result) {
+                    condition_stack[condition_depth - 1] = 1;
+                    skip_block = 0;
+                } else {
+                    skip_block = 1;
+                }
+            }
+            continue;
+        }
+        else if (strncmp(token, "else if ", 8) == 0) {
+            int previous_met = 0;
+            if (condition_depth > 0) {
+                previous_met = condition_stack[condition_depth - 1];
+            }
+            
+            if (previous_met) {
+                skip_block = 1;
+            } else {
+                char* cond = token + 8;
+                int cond_result = eval_condition(cond);
+                
+                if (cond_result) {
+                    condition_stack[condition_depth - 1] = 1;
+                    skip_block = 0;
+                } else {
+                    skip_block = 1;
+                }
+            }
+            continue;
+        }
+        else if (strncmp(token, "else", 4) == 0 && token[4] != ' ' && token[4] != 'i') {
+            int previous_met = 0;
+            if (condition_depth > 0) {
+                previous_met = condition_stack[condition_depth - 1];
+            }
+            
+            if (previous_met) {
+                skip_block = 1;
+            } else {
+                skip_block = 0;
+                if (condition_depth > 0) {
+                    condition_stack[condition_depth - 1] = 1;
+                }
+            }
+            continue;
+        }
+        else if (strncmp(token, "end", 3) == 0 && strncmp(token, "endloop", 7) != 0) {
+            if (condition_depth > 0) {
+                condition_depth--;
+            }
+            skip_block = 0;
+            continue;
+        }
+
+        if (skip_block) {
+            if (strncmp(token, "endloop", 7) == 0) {
                 skip_block = 0;
                 in_loop = 0;
             }
             continue;
         }
-
-        replace_text_operators(token);
 
         // ==================== ARRAYS ====================
         if (strncmp(token, "let ", 4) == 0 && strchr(token, '[') && strchr(token, ']')) {
@@ -973,8 +1089,7 @@ void execute(const char* code, int import_depth) {
         }
 
         // ==================== RANDOM ====================
-        else if (strcmp(token, "let __rand_internal = 0") == 0 || 
-                 strstr(token, "__rand_internal")) {
+        else if (strncmp(token, "let __rand_internal", 19) == 0) {
             struct Variable* v = find_variable("__rand_internal");
             if (!v) {
                 int idx = add_variable();
@@ -982,13 +1097,13 @@ void execute(const char* code, int import_depth) {
                 v = &variables[idx];
                 strcpy(v->name, "__rand_internal");
             }
-            v->value = rand() % 32768;
+            v->value = (double)alwex_rand();
             v->str_value = NULL;
             continue;
         }
 
-        // ==================== ENDLOOP = BREAK ====================
-        if (strncmp(token, "endloop", 7) == 0) {
+        // ==================== BREAK ====================
+        if (strncmp(token, "break", 5) == 0) {
             if (in_loop) {
                 in_loop = 0;
                 loop_start = NULL;
@@ -996,15 +1111,14 @@ void execute(const char* code, int import_depth) {
             continue;
         }
 
-        if (in_loop) {
-            if (*p == '\0' || strstr(p, "while ") == p) {
-                if (eval_condition(loop_condition)) {
-                    p = loop_start;
-                    continue;
-                } else {
-                    in_loop = 0;
-                }
+        // ==================== ENDLOOP ====================
+        if (strncmp(token, "endloop", 7) == 0) {
+            if (in_loop && eval_condition(loop_condition)) {
+                p = loop_start;
+            } else {
+                in_loop = 0;
             }
+            continue;
         }
 
         // ==================== WHILE ====================
@@ -1044,98 +1158,6 @@ void execute(const char* code, int import_depth) {
             }
             
             import_library(libname, import_depth + 1);
-            continue;
-        }
-
-        // ==================== IF/ELSE ====================
-        if (strncmp(token, "if ", 3) == 0) {
-            char* cond = token + 3;
-            int cond_result = eval_condition(cond);
-
-            if (condition_depth < 20) {
-                condition_stack[condition_depth++] = cond_result;
-            }
-            
-            if (!cond_result) {
-                skip_block = 1;
-            }
-            continue;
-        }
-        else if (strncmp(token, "else if ", 8) == 0) {
-            int previous_met = 0;
-            if (condition_depth > 0) {
-                previous_met = condition_stack[condition_depth - 1];
-            }
-            
-            if (previous_met) {
-                skip_block = 1;
-            } else {
-                char* cond = token + 8;
-                int cond_result = eval_condition(cond);
-                
-                if (cond_result) {
-                    condition_stack[condition_depth - 1] = 1;
-                    skip_block = 0;
-                } else {
-                    skip_block = 1;
-                }
-            }
-            continue;
-        }
-        else if (strncmp(token, "else", 4) == 0 && token[4] != ' ' && token[4] != 'i') {
-            int previous_met = 0;
-            if (condition_depth > 0) {
-                previous_met = condition_stack[condition_depth - 1];
-            }
-            
-            if (previous_met) {
-                skip_block = 1;
-            } else {
-                skip_block = 0;
-                if (condition_depth > 0) {
-                    condition_stack[condition_depth - 1] = 1;
-                }
-            }
-            continue;
-        }
-        else if (strncmp(token, "end", 3) == 0 && strncmp(token, "endloop", 7) != 0) {
-            if (condition_depth > 0) {
-                condition_depth--;
-            }
-            skip_block = 0;
-            continue;
-        }
-
-        // ==================== INC/DEC ====================
-        if (strstr(token, "++") || strstr(token, "--")) {
-            char var_name[50] = {0};
-            int is_increment = strstr(token, "++") != NULL;
-
-            char* start = token;
-            while (my_isspace(*start)) start++;
-
-            int i = 0;
-            while (*start && (isalnum(*start) || *start == '_') && i < 49) {
-                var_name[i++] = *start++;
-            }
-            var_name[i] = '\0';
-
-            while (my_isspace(*start)) start++;
-            
-            if ((is_increment && strncmp(start, "++", 2) == 0) ||
-                (!is_increment && strncmp(start, "--", 2) == 0)) {
-                
-                struct Variable* v = find_variable(var_name);
-                if (v) {
-                    if (is_increment) {
-                        v->value += 1;
-                    } else {
-                        v->value -= 1;
-                    }
-                } else {
-                    printf("Error: variable '%s' not found\n", var_name);
-                }
-            }
             continue;
         }
 
@@ -1297,7 +1319,7 @@ void execute(const char* code, int import_depth) {
             } 
 
             else if (strchr(arg, '[')) {
-                char array_name[50] = {0};
+                char array_name[100] = {0};
                 int index = -1;
 
                 char* bracket_start = strchr(arg, '[');
@@ -1306,7 +1328,7 @@ void execute(const char* code, int import_depth) {
                 if (bracket_start && bracket_end) {
 
                     int name_len = bracket_start - arg;
-                    if (name_len >= 50) name_len = 49;
+                    if (name_len >= 100) name_len = 99;
                     strncpy(array_name, arg, name_len);
                     array_name[name_len] = '\0';
 
@@ -1393,8 +1415,9 @@ void execute(const char* code, int import_depth) {
                 }
 
                 if (v) {
-                    if (*value_str == '\'') {
-                        char* end_quote = strchr(value_str + 1, '\'');
+                    if (*value_str == '\'' || *value_str == '"') {
+                        char quote = *value_str;
+                        char* end_quote = strchr(value_str + 1, quote);
                         if (end_quote) {
                             *end_quote = '\0';
                             int str_idx = add_string();
@@ -1403,11 +1426,7 @@ void execute(const char* code, int import_depth) {
                                 string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                 v->str_value = string_pool[str_idx];
                                 v->value = 0;
-                            } else {
-                                printf("Error: string pool full\n");
                             }
-                        } else {
-                            printf("Error: unclosed string\n");
                         }
                     } 
                     else if (strstr(value_str, "__rand_internal")) {
@@ -1421,6 +1440,33 @@ void execute(const char* code, int import_depth) {
                 }
             } else {
                 printf("Error: expected '=' in let statement\n");
+            }
+            continue;
+        }
+
+        // ==================== INC/DEC ====================
+        if (strstr(token, "++") || strstr(token, "--")) {
+            char var_name[50] = {0};
+            int is_increment = strstr(token, "++") != NULL;
+
+            char* start = token;
+            while (my_isspace(*start)) start++;
+
+            int i = 0;
+            while (*start && (isalnum(*start) || *start == '_') && i < 49) {
+                var_name[i++] = *start++;
+            }
+            var_name[i] = '\0';
+
+            struct Variable* v = find_variable(var_name);
+            if (v) {
+                if (is_increment) {
+                    v->value += 1.0;
+                } else {
+                    v->value -= 1.0;
+                }
+            } else {
+                printf("Error: variable '%s' not found\n", var_name);
             }
             continue;
         }
@@ -1680,46 +1726,424 @@ void execute(const char* code, int import_depth) {
     }
 }
 
+int file_exists(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (f) {
+        fclose(f);
+        return 1;
+    }
+    return 0;
+}
+
+int dir_exists(const char* path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+void create_directory(const char* path) {
+#ifdef _WIN32
+    _mkdir(path);
+#else
+    mkdir(path, 0755);
+#endif
+}
+
+void parse_version(const char* json, char* version, size_t max_len) {
+    const char* ver_start = strstr(json, "\"version\"");
+    if (!ver_start) {
+        version[0] = '\0';
+        return;
+    }
+    
+    ver_start = strchr(ver_start, ':');
+    if (!ver_start) {
+        version[0] = '\0';
+        return;
+    }
+    
+    ver_start = strchr(ver_start, '"');
+    if (!ver_start) {
+        version[0] = '\0';
+        return;
+    }
+    ver_start++;
+    
+    const char* ver_end = strchr(ver_start, '"');
+    if (!ver_end) {
+        version[0] = '\0';
+        return;
+    }
+    
+    size_t len = ver_end - ver_start;
+    if (len >= max_len) len = max_len - 1;
+    
+    strncpy(version, ver_start, len);
+    version[len] = '\0';
+}
+
+int compare_versions(const char* v1, const char* v2) {
+    int major1 = 0, minor1 = 0, patch1 = 0;
+    int major2 = 0, minor2 = 0, patch2 = 0;
+    
+    sscanf(v1, "%d.%d.%d", &major1, &minor1, &patch1);
+    sscanf(v2, "%d.%d.%d", &major2, &minor2, &patch2);
+    
+    if (major1 != major2) return major1 > major2 ? 1 : -1;
+    if (minor1 != minor2) return minor1 > minor2 ? 1 : -1;
+    if (patch1 != patch2) return patch1 > patch2 ? 1 : -1;
+    
+    return 0;
+}
+
+
+void install_package(const char* package_name) {
+    printf("Installing library '%s'...\n", package_name);
+    
+    char base_url[2048];
+    char json_url[2048];
+    char alw_url[2048];
+    char local_lib_dir[512];
+    char local_json_path[512];
+    char local_alw_path[512];
+
+    snprintf(base_url, sizeof(base_url), 
+             "https://raw.githubusercontent.com/alwex0920/alwexscript-package/main/%s", 
+             package_name);
+    snprintf(json_url, sizeof(json_url), "%s/alwex.json", base_url);
+    snprintf(alw_url, sizeof(alw_url), "%s/%s.alw", base_url, package_name);
+
+    snprintf(local_lib_dir, sizeof(local_lib_dir), "%s/lib/%s", interpreter_dir, package_name);
+    snprintf(local_json_path, sizeof(local_json_path), "%s/lib/%s/alwex.json", interpreter_dir, package_name);
+    snprintf(local_alw_path, sizeof(local_alw_path), "%s/lib/%s/%s.alw", interpreter_dir, package_name, package_name);
+
+    char lib_base[512];
+    snprintf(lib_base, sizeof(lib_base), "%s/lib", interpreter_dir);
+
+    printf("Downloading metadata...\n");
+    http_get(json_url);
+    
+    if (!last_http_response.data || last_http_response.size == 0) {
+        printf("Error: couldn't download metadata for '%s'\n", package_name);
+        printf("Check that the library exists in the repository:\n");
+        printf("  %s\n", json_url);
+        return;
+    }
+
+    char remote_version[32];
+    parse_version(last_http_response.data, remote_version, sizeof(remote_version));
+    
+    if (remote_version[0] == '\0') {
+        printf("Error: couldn't read the version from alwex.json\n");
+        return;
+    }
+    
+    printf("Version in the repository: %s\n", remote_version);
+
+    if (file_exists(local_json_path)) {
+        FILE* local_json_file = fopen(local_json_path, "r");
+        if (local_json_file) {
+            fseek(local_json_file, 0, SEEK_END);
+            long local_size = ftell(local_json_file);
+            fseek(local_json_file, 0, SEEK_SET);
+            
+            char* local_json_data = malloc(local_size + 1);
+            if (local_json_data) {
+                fread(local_json_data, 1, local_size, local_json_file);
+                local_json_data[local_size] = '\0';
+                
+                char local_version[32];
+                parse_version(local_json_data, local_version, sizeof(local_version));
+                
+                printf("Installed version: %s\n", local_version);
+                
+                int cmp = compare_versions(remote_version, local_version);
+                
+                if (cmp < 0) {
+                    printf("You have a newer version (%s) installed. No update is required.\n", local_version);
+                    free(local_json_data);
+                    fclose(local_json_file);
+                    return;
+                } else if (cmp == 0) {
+                    printf("The %s library is already installed (%s version)\n", package_name, local_version);
+                    free(local_json_data);
+                    fclose(local_json_file);
+                    return;
+                } else {
+                    printf("An update is available: %s -> %s\n", local_version, remote_version);
+                }
+                
+                free(local_json_data);
+            }
+            fclose(local_json_file);
+        }
+    }
+
+    if (!dir_exists(lib_base)) {
+        create_directory(lib_base);
+    }
+
+    if (!dir_exists(local_lib_dir)) {
+        create_directory(local_lib_dir);
+    }
+
+    printf("Saving alwex.json...\n");
+    FILE* json_file = fopen(local_json_path, "w");
+    if (!json_file) {
+        printf("Error: failed to create a file %s\n", local_json_path);
+        return;
+    }
+    fwrite(last_http_response.data, 1, last_http_response.size, json_file);
+    fclose(json_file);
+
+    printf("Loading %s.alw...\n", package_name);
+    http_download(alw_url, local_alw_path);
+    
+    printf("✓ %s library has been successfully installed (%s version)\n", package_name, remote_version);
+}
+
 void import_library(const char* libname, int import_depth) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep for library '%s'\n", libname);
         return;
     }
     
-    char filename[100];
-    snprintf(filename, sizeof(filename), "%s.alw", libname);
-    
-    FILE* file = fopen(filename, "r");
-    if (!file) {
-        printf("Error: library '%s' not found\n", libname);
-        return;
+    char lib_dir[512];
+    char lib_path[512];
+    char json_path[512];
+    char local_path[1024];
+
+    snprintf(lib_dir,   sizeof(lib_dir),   "%s/lib/%s", interpreter_dir, libname);
+    snprintf(lib_path,  sizeof(lib_path),  "%s/lib/%s/%s.alw", interpreter_dir, libname, libname);
+    snprintf(json_path, sizeof(json_path), "%s/lib/%s/alwex.json", interpreter_dir, libname);
+
+    if (dir_exists(lib_dir)) {
+        if (file_exists(lib_path) && file_exists(json_path)) {
+            FILE* file = fopen(lib_path, "r");
+            if (!file) {
+                printf("Error: couldn't open library '%s'\n", libname);
+                return;
+            }
+
+            fseek(file, 0, SEEK_END);
+            long size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+
+            char* code = malloc(size + 1);
+            if (!code) {
+                fclose(file);
+                printf("Error: there is not enough memory to load the library. '%s'\n", libname);
+                return;
+            }
+
+            fread(code, 1, size, file);
+            code[size] = '\0';
+            fclose(file);
+
+            execute(code, import_depth);
+            free(code);
+            return;
+
+        } else if (file_exists(json_path) && !file_exists(lib_path)) {
+            printf("Error: The '%s' library is damaged! The %s.alw file is missing. A reinstall is required.\n", libname, libname);
+            return;
+
+        } else {
+            printf("Error: the '%s' library is damaged or not fully installed.\n", libname);
+            return;
+        }
     }
-    
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    
-    char* code = malloc(size + 1);
-    if (!code) {
-        fclose(file);
-        printf("Error: memory allocation failed\n");
-        return;
+
+    extern char current_script_dir[512];
+
+    if (current_script_dir[0] != '\0') {
+        snprintf(local_path, sizeof(local_path), "%s/%s.alw", current_script_dir, libname);
+        
+        if (file_exists(local_path)) {
+            FILE* file = fopen(local_path, "r");
+            if (!file) {
+                printf("Error: couldn't open the local library '%s'\n", libname);
+                return;
+            }
+
+            fseek(file, 0, SEEK_END);
+            long size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+
+            char* code = malloc(size + 1);
+            if (!code) {
+                fclose(file);
+                printf("Error: not enough memory\n");
+                return;
+            }
+
+            fread(code, 1, size, file);
+            code[size] = '\0';
+            fclose(file);
+
+            execute(code, import_depth);
+            free(code);
+            return;
+        }
     }
-    
-    fread(code, 1, size, file);
-    code[size] = '\0';
-    fclose(file);
-    
-    execute(code, import_depth);
-    free(code);
+
+    printf("Error: The %s library was not found either in lib/ or next to the script\n", libname);
 }
 
 int main(int argc, char* argv[]) {
     alwex_srand((unsigned int)(time(NULL) ^ (clock() << 16)));
-    
+
+    #ifdef _WIN32
+        char full_path[512];
+        GetModuleFileNameA(NULL, full_path, sizeof(full_path));
+        char* last_sep = strrchr(full_path, '\\');
+        if (last_sep) {
+            *last_sep = '\0';
+            strcpy(interpreter_dir, full_path);
+        }
+    #else
+        char full_path[512];
+        ssize_t len = readlink("/proc/self/exe", full_path, sizeof(full_path) - 1);
+        if (len != -1) {
+            full_path[len] = '\0';
+            char* last_sep = strrchr(full_path, '/');
+            if (last_sep) {
+                *last_sep = '\0';
+                strcpy(interpreter_dir, full_path);
+            }
+        }
+    #endif
+
+    if (argc == 3 && strcmp(argv[1], "install") == 0) {
+        init_memory();
+        install_package(argv[2]);
+        free_memory();
+        return 0;
+    }
+
+    if (argc == 2 && strcmp(argv[1], "list") == 0) {
+        char lib_path[512];
+        
+        #ifdef _WIN32
+            snprintf(lib_path, sizeof(lib_path), "%s\\lib", interpreter_dir);
+        #else
+            snprintf(lib_path, sizeof(lib_path), "%s/lib", interpreter_dir);
+        #endif
+        
+        printf("Installed Libraries:\n");
+        printf("(path: %s)\n\n", lib_path);
+        
+        int found_any = 0;
+        
+        #ifndef _WIN32
+        DIR* dir = opendir(lib_path);
+        if (dir) {
+            struct dirent* entry;
+            while ((entry = readdir(dir)) != NULL) {
+                if (entry->d_name[0] == '.') continue;
+                
+                char json_path[512];
+                snprintf(json_path, sizeof(json_path), "%s/%s/alwex.json", lib_path, entry->d_name);
+                
+                if (file_exists(json_path)) {
+                    FILE* f = fopen(json_path, "r");
+                    if (f) {
+                        fseek(f, 0, SEEK_END);
+                        long size = ftell(f);
+                        fseek(f, 0, SEEK_SET);
+                        
+                        char* data = malloc(size + 1);
+                        if (data) {
+                            fread(data, 1, size, f);
+                            data[size] = '\0';
+                            
+                            char version[32];
+                            parse_version(data, version, sizeof(version));
+                            
+                            printf("  • %s (%s)\n", entry->d_name, version);
+                            found_any = 1;
+                            free(data);
+                        }
+                        fclose(f);
+                    }
+                }
+            }
+            closedir(dir);
+        }
+        #else
+        // Windows version
+        char search_path[512];
+        snprintf(search_path, sizeof(search_path), "%s\\*", lib_path);
+        
+        WIN32_FIND_DATAA findData;
+        HANDLE hFind = FindFirstFileA(search_path, &findData);
+        
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    if (strcmp(findData.cFileName, ".") != 0 && strcmp(findData.cFileName, "..") != 0) {
+                        char json_path[512];
+                        snprintf(json_path, sizeof(json_path), "%s\\%s\\alwex.json", lib_path, findData.cFileName);
+                        
+                        if (file_exists(json_path)) {
+                            FILE* f = fopen(json_path, "r");
+                            if (f) {
+                                fseek(f, 0, SEEK_END);
+                                long size = ftell(f);
+                                fseek(f, 0, SEEK_SET);
+                                
+                                char* data = malloc(size + 1);
+                                if (data) {
+                                    fread(data, 1, size, f);
+                                    data[size] = '\0';
+                                    
+                                    char version[32];
+                                    parse_version(data, version, sizeof(version));
+                                    
+                                    printf("  • %s (%s)\n", findData.cFileName, version);
+                                    found_any = 1;
+                                    free(data);
+                                }
+                                fclose(f);
+                            }
+                        }
+                    }
+                }
+            } while (FindNextFileA(hFind, &findData));
+            FindClose(hFind);
+        }
+        #endif
+        
+        if (!found_any) {
+            printf("  (no libraries installed)\n");
+            printf("\nInstall a library with: alwex install <package>\n");
+        }
+        
+        return 0;
+    }
+
     if (argc != 2) {
-        printf("Usage: %s <script.alw>\n", argv[0]);
+        printf("AlwexScript Interpreter v3.0\n\n");
+        printf("Usage:\n");
+        printf("  alwex <script.alw>          Run a script\n");
+        printf("  alwex install <package>     Install a library\n");
+        printf("  alwex list                  Show installed libraries\n\n");
         return 1;
+    }
+
+    char* last_slash = strrchr(argv[1], '/');
+    #ifdef _WIN32
+        char* last_backslash = strrchr(argv[1], '\\');
+        if (last_backslash > last_slash) last_slash = last_backslash;
+    #endif
+
+    if (last_slash) {
+        int dir_len = last_slash - argv[1];
+        if (dir_len < (int)sizeof(current_script_dir) - 1) {
+            strncpy(current_script_dir, argv[1], dir_len);
+            current_script_dir[dir_len] = '\0';
+        }
+    } else {
+        strcpy(current_script_dir, ".");
     }
 
     init_memory();
