@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.0
+**Version**: 3.0.1
 **Supported OS**: Windows, Linux, macOS
-**Latest Updates**: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
+**Latest Updates**: Fixed print
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -259,6 +259,7 @@ alwex install name_lib
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.0.1: Fixed print
 - v3.0: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
 - v2.2: Added arrays support
 - v2.1: Added interaction with websites in the form of GET and POST, as well as downloading files
