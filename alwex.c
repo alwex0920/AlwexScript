@@ -5,6 +5,7 @@
 #include <time.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -122,7 +123,7 @@ size_t alwex_write_callback(void *contents, size_t size, size_t nmemb, void *use
 
 void http_get(const char* url) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -167,7 +168,7 @@ void http_get(const char* url) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0.1");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     
     CURLcode res = curl_easy_perform(curl);
@@ -181,7 +182,7 @@ void http_get(const char* url) {
 
 void http_post(const char* url, const char* data) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -258,7 +259,7 @@ void http_post(const char* url, const char* data) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0.1");
     
     CURLcode res = curl_easy_perform(curl);
     if(res != CURLE_OK) {
@@ -271,7 +272,7 @@ void http_post(const char* url, const char* data) {
 
 void http_download(const char* url, const char* filename) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -425,9 +426,17 @@ void replace_text_operators(char* token) {
 }
 
 struct Variable* find_variable(const char* name) {
-    for (int i = 0; i < var_count; i++) {
-        if (strcmp(variables[i].name, name) == 0) {
-            return &variables[i];
+    char clean_name[256] = {0};
+    int i = 0;
+    while (name[i] && name[i] != '\n' && name[i] != '\r' && name[i] != ' ' && name[i] != '\t' && i < 255) {
+        clean_name[i] = name[i];
+        i++;
+    }
+    clean_name[i] = '\0';
+    
+    for (int j = 0; j < var_count; j++) {
+        if (strcmp(variables[j].name, clean_name) == 0) {
+            return &variables[j];
         }
     }
     return NULL;
@@ -768,6 +777,28 @@ int add_array() {
         arrays = realloc(arrays, array_capacity * sizeof(struct Array));
     }
     return array_count++;
+}
+
+static void clean_var_name(const char* src, char* dst, int dst_size) {
+    int i = 0;
+
+    while (*src && isspace((unsigned char)*src)) {
+        src++;
+    }
+
+    while (*src && i < dst_size - 1) {
+        char c = *src;
+        if ( (c >= 'a' && c <= 'z') ||
+             (c >= 'A' && c <= 'Z') ||
+             (c >= '0' && c <= '9') ||
+             c == '_' ) {
+            dst[i++] = c;
+            src++;
+        } else {
+            break;
+        }
+    }
+    dst[i] = '\0';
 }
 
 void execute(const char* code, int import_depth) {
@@ -1306,46 +1337,54 @@ void execute(const char* code, int import_depth) {
         // ==================== PRINT ====================
         if (strncmp(token, "print ", 6) == 0) {
             char* arg = token + 6;
-            while (my_isspace(*arg)) arg++;
+
+            while (*arg && isspace((unsigned char)*arg)) {
+                arg++;
+            }
 
             if (*arg == '\'') {
-                char* end_quote = strchr(arg + 1, '\'');
+                char* start = arg + 1;
+                char* end_quote = strchr(start, '\'');
+
                 if (end_quote) {
                     *end_quote = '\0';
-                    printf("%s\n", arg + 1);
+                    printf("%s\n", start);
                 } else {
                     printf("Error: unclosed string\n");
                 }
-            } 
+            }
 
             else if (strchr(arg, '[')) {
-                char array_name[100] = {0};
+                char array_name[128] = {0};
+                char index_str[32] = {0};
                 int index = -1;
 
                 char* bracket_start = strchr(arg, '[');
-                char* bracket_end = strchr(arg, ']');
-                
-                if (bracket_start && bracket_end) {
+                char* bracket_end   = strchr(arg, ']');
 
-                    int name_len = bracket_start - arg;
-                    if (name_len >= 100) name_len = 99;
+                if (bracket_start && bracket_end && bracket_end > bracket_start) {
+                    int name_len = (int)(bracket_start - arg);
+                    if (name_len >= (int)sizeof(array_name))
+                        name_len = (int)sizeof(array_name) - 1;
+
                     strncpy(array_name, arg, name_len);
                     array_name[name_len] = '\0';
 
                     char* trim_start = array_name;
-                    while (*trim_start && my_isspace(*trim_start)) trim_start++;
+                    while (*trim_start && isspace((unsigned char)*trim_start)) {
+                        trim_start++;
+                    }
                     if (trim_start != array_name) {
                         memmove(array_name, trim_start, strlen(trim_start) + 1);
                     }
-                    char* trim_end = array_name + strlen(array_name) - 1;
-                    while (trim_end > array_name && my_isspace(*trim_end)) {
-                        *trim_end = '\0';
+                    char* trim_end = array_name + strlen(array_name);
+                    while (trim_end > array_name && isspace((unsigned char)trim_end[-1])) {
                         trim_end--;
                     }
+                    *trim_end = '\0';
 
-                    char index_str[20] = {0};
-                    int idx_len = bracket_end - bracket_start - 1;
-                    if (idx_len > 0 && idx_len < 20) {
+                    int idx_len = (int)(bracket_end - bracket_start - 1);
+                    if (idx_len > 0 && idx_len < (int)sizeof(index_str)) {
                         strncpy(index_str, bracket_start + 1, idx_len);
                         index_str[idx_len] = '\0';
                         index = atoi(index_str);
@@ -1361,7 +1400,7 @@ void execute(const char* code, int import_depth) {
                                 printf("\n");
                             }
                         } else {
-                            printf("Error: array '%s' index %d out of bounds (size: %d)\n", 
+                            printf("Error: array '%s' index %d out of bounds (size: %d)\n",
                                 array_name, index, arr->size);
                         }
                     } else {
@@ -1371,18 +1410,28 @@ void execute(const char* code, int import_depth) {
                     printf("Error: invalid array syntax\n");
                 }
             }
+
             else {
-                struct Variable* v = find_variable(arg);
-                if (v) {
-                    if (v->str_value) printf("%s\n", v->str_value);
-                    else {
-                        print_double(v->value);
-                        printf("\n");
-                    }
+                char clean_arg[256];
+                clean_var_name(arg, clean_arg, sizeof(clean_arg));
+
+                if (clean_arg[0] == '\0') {
+                    printf("Error: empty variable name\n");
                 } else {
-                    printf("Error: variable '%s' not found\n", arg);
+                    struct Variable* v = find_variable(clean_arg);
+                    if (v) {
+                        if (v->str_value) {
+                            printf("%s\n", v->str_value);
+                        } else {
+                            print_double(v->value);
+                            printf("\n");
+                        }
+                    } else {
+                        printf("Error: variable '%s' not found\n", clean_arg);
+                    }
                 }
             }
+
             continue;
         }
 
@@ -2059,7 +2108,7 @@ int main(int argc, char* argv[]) {
                             char version[32];
                             parse_version(data, version, sizeof(version));
                             
-                            printf("  • %s (%s)\n", entry->d_name, version);
+                            printf("  - %s (%s)\n", entry->d_name, version);
                             found_any = 1;
                             free(data);
                         }
@@ -2099,7 +2148,7 @@ int main(int argc, char* argv[]) {
                                     char version[32];
                                     parse_version(data, version, sizeof(version));
                                     
-                                    printf("  • %s (%s)\n", findData.cFileName, version);
+                                    printf("  - %s (%s)\n", findData.cFileName, version);
                                     found_any = 1;
                                     free(data);
                                 }
@@ -2122,7 +2171,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc != 2) {
-        printf("AlwexScript Interpreter v3.0\n\n");
+        printf("AlwexScript Interpreter v3.0.1\n\n");
         printf("Usage:\n");
         printf("  alwex <script.alw>          Run a script\n");
         printf("  alwex install <package>     Install a library\n");
