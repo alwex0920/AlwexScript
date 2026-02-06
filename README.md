@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.0.1
+**Version**: 3.1.0
 **Supported OS**: Windows, Linux, macOS
-**Latest Updates**: Fixed print
+**Latest Updates**: Added OOP
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -16,6 +16,7 @@
 - Dynamic memory management (Unix systems)
 - Arrays: full support for lists of data
 - Loop control: endloop works as break statement
+- OOP and Inheritance
 - Install library
 
 ## Installation
@@ -129,6 +130,118 @@ arr_length fruits           # Get array length
 print arr_length_result     # Output: 3
 
 arr_push scores 88          # Add element to end
+```
+### OOP
+```alw
+# Define a simple class
+class Person
+    let name = ''
+    let age = 0
+    
+    func constructor
+        let this.name = arg0
+        let this.age = arg1
+    end
+    
+    func greet
+        print 'Hello! My name is:'
+        print this.name
+        print 'I am years old:'
+        print this.age
+    end
+    
+    func birthday
+        let this.age = this.age plus 1
+        print 'Happy Birthday!'
+    end
+end
+
+# Create objects
+let alice = new Person 'Alice' 25
+let bob = new Person 'Bob' 30
+
+# Access properties
+print alice.name
+print bob.age
+
+# Call methods
+call alice.greet
+call alice.birthday
+print alice.age
+```
+### OOP Inheritance
+```alw
+# Base class
+class Animal
+    let name = ''
+    let age = 0
+    
+    func speak
+        print 'Some sound...'
+    end
+    
+    func info
+        print 'Name:'
+        print this.name
+        print 'Age:'
+        print this.age
+    end
+end
+
+# Child class - inherits from Animal
+class Dog extends Animal
+    let breed = ''
+    
+    func constructor
+        let this.name = arg0
+        let this.breed = arg1
+        let this.age = 0
+    end
+    
+    # Override parent method
+    func speak
+        print 'Woof! Woof!'
+    end
+    
+    # New method
+    func fetch
+        print 'Fetching the ball!'
+    end
+end
+
+# Another child class
+class Cat extends Animal
+    let color = ''
+    
+    func constructor
+        let this.name = arg0
+        let this.color = arg1
+    end
+    
+    # Override parent method
+    func speak
+        print 'Meow!'
+    end
+    
+    func sleep
+        print 'Zzz...'
+    end
+end
+
+# Create objects
+let dog = new Dog 'Rex' 'German Shepherd'
+let cat = new Cat 'Whiskers' 'Orange'
+
+# Use inherited methods
+call dog.info
+call dog.speak
+call dog.fetch
+
+print '---'
+
+call cat.info
+call cat.speak
+call cat.sleep
 ```
 ### Operators
 ## Arithmetic: +, -, *, /, plus, minus, mul, div
@@ -259,6 +372,7 @@ alwex install name_lib
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.1.0: Added OOP
 - v3.0.1: Fixed print
 - v3.0: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
 - v2.2: Added arrays support

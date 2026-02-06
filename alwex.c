@@ -32,6 +32,10 @@
 #define MAX_HTTP_RESPONSE 1048576  // 1MB max response
 #define MAX_ARRAY_SIZE 1000
 #define MAX_ARRAYS 100
+#define MAX_CLASSES 100
+#define MAX_OBJECTS 500
+#define MAX_CLASS_METHODS 50
+#define MAX_CLASS_PROPERTIES 50
 
 #ifndef _WIN32
 #define strlcpy(dest, src, size) strncpy(dest, src, size)
@@ -48,6 +52,7 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 #endif
 
 static unsigned long rand_state = 0;
+static char g_current_context_object[50] = {0};
 
 struct Variable {
     char name[50];
@@ -77,6 +82,42 @@ struct HttpResponse {
     char* data;
     size_t size;
 };
+
+struct ClassProperty {
+    char name[50];
+    double value;
+    char* str_value;
+};
+
+struct ClassMethod {
+    char name[50];
+    char* body;
+};
+
+struct Class {
+    char name[50];
+    char parent_name[50];
+    struct ClassProperty properties[MAX_CLASS_PROPERTIES];
+    int property_count;
+    struct ClassMethod methods[MAX_CLASS_METHODS];
+    int method_count;
+    char* constructor_body;
+};
+
+struct Object {
+    char name[50];
+    char class_name[50];
+    struct ClassProperty properties[MAX_CLASS_PROPERTIES];
+    int property_count;
+};
+
+static struct Class *classes = NULL;
+static int class_count = 0;
+static int class_capacity = 0;
+
+static struct Object *objects = NULL;
+static int object_count = 0;
+static int object_capacity = 0;
 
 static struct Variable *variables = NULL;
 static int var_count = 0;
@@ -392,36 +433,72 @@ void print_double(double n) {
 
 void replace_text_operators(char* token) {
     char* op_ptr = token;
+    
     while ((op_ptr = strstr(op_ptr, "plus"))) {
-        *op_ptr = '+';
-        memmove(op_ptr + 1, op_ptr + 4, strlen(op_ptr + 4) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 4))) {
+            *op_ptr = '+';
+            memmove(op_ptr + 1, op_ptr + 4, strlen(op_ptr + 4) + 1);
+        } else {
+            op_ptr++;
+        }
     }
+    
     op_ptr = token;
     while ((op_ptr = strstr(op_ptr, "minus"))) {
-        *op_ptr = '-';
-        memmove(op_ptr + 1, op_ptr + 5, strlen(op_ptr + 5) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 5))) {
+            *op_ptr = '-';
+            memmove(op_ptr + 1, op_ptr + 5, strlen(op_ptr + 5) + 1);
+        } else {
+            op_ptr++;
+        }
     }
+    
     op_ptr = token;
     while ((op_ptr = strstr(op_ptr, "mul"))) {
-        *op_ptr = '*';
-        memmove(op_ptr + 1, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 3))) {
+            *op_ptr = '*';
+            memmove(op_ptr + 1, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        } else {
+            op_ptr++;
+        }
     }
+    
     op_ptr = token;
     while ((op_ptr = strstr(op_ptr, "div"))) {
-        *op_ptr = '/';
-        memmove(op_ptr + 1, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 3))) {
+            *op_ptr = '/';
+            memmove(op_ptr + 1, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        } else {
+            op_ptr++;
+        }
     }
+    
     op_ptr = token;
     while ((op_ptr = strstr(op_ptr, "inc"))) {
-        *op_ptr = '+';
-        *(op_ptr + 1) = '+';
-        memmove(op_ptr + 2, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 3))) {
+            *op_ptr = '+';
+            *(op_ptr + 1) = '+';
+            memmove(op_ptr + 2, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        } else {
+            op_ptr++;
+        }
     }
+    
     op_ptr = token;
     while ((op_ptr = strstr(op_ptr, "dec"))) {
-        *op_ptr = '-';
-        *(op_ptr + 1) = '-';
-        memmove(op_ptr + 2, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        if ((op_ptr == token || !isalnum(*(op_ptr - 1))) && 
+            !isalnum(*(op_ptr + 3))) {
+            *op_ptr = '-';
+            *(op_ptr + 1) = '-';
+            memmove(op_ptr + 2, op_ptr + 3, strlen(op_ptr + 3) + 1);
+        } else {
+            op_ptr++;
+        }
     }
 }
 
@@ -460,6 +537,24 @@ struct Array* find_array(const char* name) {
     return NULL;
 }
 
+struct Class* find_class(const char* name) {
+    for (int i = 0; i < class_count; i++) {
+        if (strcmp(classes[i].name, name) == 0) {
+            return &classes[i];
+        }
+    }
+    return NULL;
+}
+
+struct Object* find_object(const char* name) {
+    for (int i = 0; i < object_count; i++) {
+        if (strcmp(objects[i].name, name) == 0) {
+            return &objects[i];
+        }
+    }
+    return NULL;
+}
+
 double parse_expression(const char** p);
 double parse_term(const char** p);
 double parse_factor(const char** p);
@@ -490,14 +585,37 @@ double parse_factor(const char** p) {
             (*p)++;
         }
     }
-
     else if (isdigit(**p) || **p == '.') {
         result = str_to_double(*p);
         while (isdigit(**p) || **p == '.') {
             (*p)++;
         }
     }
-
+    else if (strncmp(*p, "this.", 5) == 0) {
+        *p += 5;
+        char prop_name[50] = {0};
+        int i = 0;
+        
+        while ((isalnum(**p) || **p == '_') && i < 49) {
+            prop_name[i++] = **p;
+            (*p)++;
+        }
+        prop_name[i] = '\0';
+        
+        extern char g_current_context_object[50];
+        
+        if (g_current_context_object[0] != '\0') {
+            struct Object* obj = find_object(g_current_context_object);
+            if (obj) {
+                for (int j = 0; j < obj->property_count; j++) {
+                    if (strcmp(obj->properties[j].name, prop_name) == 0) {
+                        result = obj->properties[j].value;
+                        break;
+                    }
+                }
+            }
+        }
+    }
     else if (isalpha(**p) || **p == '_') {
         char var_name[50] = {0};
         int i = 0;
@@ -700,6 +818,12 @@ void init_memory() {
 
     array_capacity = 10;
     arrays = calloc(array_capacity, sizeof(struct Array));
+
+    class_capacity = 10;
+    classes = calloc(class_capacity, sizeof(struct Class));
+    
+    object_capacity = 10;
+    objects = calloc(object_capacity, sizeof(struct Object));
 }
 
 void free_memory() {
@@ -717,6 +841,24 @@ void free_memory() {
 
     if (arrays) {
         free(arrays);
+    }
+    
+    if (classes) {
+        for (int i = 0; i < class_count; i++) {
+            for (int j = 0; j < classes[i].method_count; j++) {
+                if (classes[i].methods[j].body) {
+                    free(classes[i].methods[j].body);
+                }
+            }
+            if (classes[i].constructor_body) {
+                free(classes[i].constructor_body);
+            }
+        }
+        free(classes);
+    }
+    
+    if (objects) {
+        free(objects);
     }
     
     if (last_http_response.data) {
@@ -801,7 +943,36 @@ static void clean_var_name(const char* src, char* dst, int dst_size) {
     dst[i] = '\0';
 }
 
-void execute(const char* code, int import_depth) {
+int add_class() {
+    if (class_count >= class_capacity) {
+        class_capacity *= 2;
+        classes = realloc(classes, class_capacity * sizeof(struct Class));
+        if (!classes) {
+            printf("Error: memory allocation failed for classes\n");
+            return -1;
+        }
+    }
+    int idx = class_count++;
+    classes[idx].parent_name[0] = '\0';
+    classes[idx].property_count = 0;
+    classes[idx].method_count = 0;
+    classes[idx].constructor_body = NULL;
+    return idx;
+}
+
+int add_object() {
+    if (object_count >= object_capacity) {
+        object_capacity *= 2;
+        objects = realloc(objects, object_capacity * sizeof(struct Object));
+        if (!objects) {
+            printf("Error: memory allocation failed for objects\n");
+            return -1;
+        }
+    }
+    return object_count++;
+}
+
+void execute(const char* code, int import_depth, const char* context_object) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep (max %d levels)\n", MAX_IMPORT_DEPTH);
         return;
@@ -816,6 +987,19 @@ void execute(const char* code, int import_depth) {
     int in_loop = 0;
     const char* loop_start = NULL;
     char loop_condition[100] = {0};
+
+    int in_class = 0;
+    struct Class* current_class = NULL;
+    
+    char prev_context[50] = {0};
+    strcpy(prev_context, g_current_context_object);
+    
+    char current_object[50] = {0};
+    if (context_object && context_object[0] != '\0') {
+        strncpy(current_object, context_object, sizeof(current_object) - 1);
+        current_object[sizeof(current_object) - 1] = '\0';
+        strcpy(g_current_context_object, current_object);
+    }
 
     while (*p) {
         int line_len = 0;
@@ -835,6 +1019,489 @@ void execute(const char* code, int import_depth) {
         if (*token == '\0' || *token == '#') continue;
 
         replace_text_operators(token);
+
+        // ==================== CLASS ====================
+        if (strncmp(token, "class ", 6) == 0) {
+            char* class_def = token + 6;
+            while (my_isspace(*class_def)) class_def++;
+            
+            char class_name[50] = {0};
+            char parent_name[50] = {0};
+            
+            int i = 0;
+            while (*class_def && !my_isspace(*class_def) && i < 49) {
+                class_name[i++] = *class_def++;
+            }
+            class_name[i] = '\0';
+            
+            while (my_isspace(*class_def)) class_def++;
+            if (strncmp(class_def, "extends ", 8) == 0) {
+                class_def += 8;
+                while (my_isspace(*class_def)) class_def++;
+                
+                i = 0;
+                while (*class_def && !my_isspace(*class_def) && i < 49) {
+                    parent_name[i++] = *class_def++;
+                }
+                parent_name[i] = '\0';
+            }
+            
+            int idx = add_class();
+            if (idx < 0) continue;
+            
+            current_class = &classes[idx];
+            strcpy(current_class->name, class_name);
+            strcpy(current_class->parent_name, parent_name);
+            current_class->property_count = 0;
+            current_class->method_count = 0;
+            current_class->constructor_body = NULL;
+            
+            if (parent_name[0] != '\0') {
+                struct Class* parent = find_class(parent_name);
+                if (parent) {
+                    for (int j = 0; j < parent->property_count; j++) {
+                        current_class->properties[current_class->property_count] = parent->properties[j];
+                        if (parent->properties[j].str_value) {
+                            int str_idx = add_string();
+                            if (str_idx >= 0) {
+                                strcpy(string_pool[str_idx], parent->properties[j].str_value);
+                                current_class->properties[current_class->property_count].str_value = string_pool[str_idx];
+                            }
+                        }
+                        current_class->property_count++;
+                    }
+                    
+                    for (int j = 0; j < parent->method_count; j++) {
+                        current_class->methods[current_class->method_count].body = malloc(strlen(parent->methods[j].body) + 1);
+                        if (current_class->methods[current_class->method_count].body) {
+                            strcpy(current_class->methods[current_class->method_count].name, parent->methods[j].name);
+                            strcpy(current_class->methods[current_class->method_count].body, parent->methods[j].body);
+                            current_class->method_count++;
+                        }
+                    }
+                } else {
+                    printf("Error: parent class '%s' not found\n", parent_name);
+                }
+            }
+            
+            in_class = 1;
+            continue;
+        }
+        
+        // ==================== END CLASS ====================
+        if (in_class && strncmp(token, "end", 3) == 0 && strncmp(token, "endloop", 7) != 0) {
+            in_class = 0;
+            current_class = NULL;
+            continue;
+        }
+        
+        // ==================== PROPERTY (inside class) ====================
+        if (in_class && current_class && strncmp(token, "let ", 4) == 0) {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                char prop_name[50];
+                char* name_start = token + 4;
+                while (my_isspace(*name_start)) name_start++;
+                
+                char* name_end = eq;
+                while (name_end > name_start && my_isspace(*(name_end - 1))) name_end--;
+                
+                int name_len = name_end - name_start;
+                if (name_len >= 50) name_len = 49;
+                strncpy(prop_name, name_start, name_len);
+                prop_name[name_len] = '\0';
+                
+                if (current_class->property_count < MAX_CLASS_PROPERTIES) {
+                    struct ClassProperty* prop = &current_class->properties[current_class->property_count++];
+                    strcpy(prop->name, prop_name);
+                    
+                    char* value_str = eq + 1;
+                    while (my_isspace(*value_str)) value_str++;
+                    
+                    if (*value_str == '\'' || *value_str == '"') {
+                        char quote = *value_str;
+                        value_str++;
+                        char* end_quote = strchr(value_str, quote);
+                        if (end_quote) {
+                            *end_quote = '\0';
+                            int str_idx = add_string();
+                            if (str_idx >= 0) {
+                                strcpy(string_pool[str_idx], value_str);
+                                prop->str_value = string_pool[str_idx];
+                                prop->value = 0;
+                            }
+                        }
+                    } else {
+                        prop->value = eval_expression(value_str);
+                        prop->str_value = NULL;
+                    }
+                }
+            }
+            continue;
+        }
+        
+        // ==================== METHOD (inside class) ====================
+        if (in_class && current_class && strncmp(token, "func ", 5) == 0) {
+            char* method_name = token + 5;
+            while (my_isspace(*method_name)) method_name++;
+            
+            char method_name_clean[50];
+            int i = 0;
+            while (*method_name && !my_isspace(*method_name) && i < 49) {
+                method_name_clean[i++] = *method_name++;
+            }
+            method_name_clean[i] = '\0';
+            
+            if (strcmp(method_name_clean, "constructor") == 0) {
+                const char* end_ptr = strstr(p, "end");
+                if (end_ptr) {
+                    int body_size = end_ptr - p;
+                    current_class->constructor_body = malloc(body_size + 1);
+                    if (current_class->constructor_body) {
+                        memcpy(current_class->constructor_body, p, body_size);
+                        current_class->constructor_body[body_size] = '\0';
+                    }
+                    p = end_ptr + 3;
+                }
+            } else {
+                int existing_idx = -1;
+                for (int j = 0; j < current_class->method_count; j++) {
+                    if (strcmp(current_class->methods[j].name, method_name_clean) == 0) {
+                        existing_idx = j;
+                        break;
+                    }
+                }
+                
+                const char* end_ptr = strstr(p, "end");
+                if (end_ptr) {
+                    int body_size = end_ptr - p;
+                    
+                    if (existing_idx >= 0) {
+                        free(current_class->methods[existing_idx].body);
+                        current_class->methods[existing_idx].body = malloc(body_size + 1);
+                        if (current_class->methods[existing_idx].body) {
+                            memcpy(current_class->methods[existing_idx].body, p, body_size);
+                            current_class->methods[existing_idx].body[body_size] = '\0';
+                        }
+                    } else if (current_class->method_count < MAX_CLASS_METHODS) {
+                        struct ClassMethod* method = &current_class->methods[current_class->method_count++];
+                        strcpy(method->name, method_name_clean);
+                        method->body = malloc(body_size + 1);
+                        if (method->body) {
+                            memcpy(method->body, p, body_size);
+                            method->body[body_size] = '\0';
+                        }
+                    }
+                    
+                    p = end_ptr + 3;
+                }
+            }
+            continue;
+        }
+        
+        // ==================== NEW (create object) ====================
+        if (strncmp(token, "let ", 4) == 0 && strstr(token, " = new ")) {
+            char obj_name[50];
+            char class_name[50];
+            char params[200] = {0};
+            
+            char* eq = strstr(token, " = new ");
+            if (eq) {
+                char* name_start = token + 4;
+                while (my_isspace(*name_start)) name_start++;
+                
+                char* name_end = eq;
+                while (name_end > name_start && my_isspace(*(name_end - 1))) name_end--;
+                
+                int name_len = name_end - name_start;
+                if (name_len >= 50) name_len = 49;
+                strncpy(obj_name, name_start, name_len);
+                obj_name[name_len] = '\0';
+                
+                char* class_start = eq + 7;
+                while (my_isspace(*class_start)) class_start++;
+                
+                int i = 0;
+                while (*class_start && !my_isspace(*class_start) && i < 49) {
+                    class_name[i++] = *class_start++;
+                }
+                class_name[i] = '\0';
+                
+                while (my_isspace(*class_start)) class_start++;
+                if (*class_start) {
+                    strcpy(params, class_start);
+                }
+                
+                struct Class* cls = find_class(class_name);
+                if (cls) {
+                    int obj_idx = add_object();
+                    if (obj_idx >= 0) {
+                        struct Object* obj = &objects[obj_idx];
+                        strcpy(obj->name, obj_name);
+                        strcpy(obj->class_name, class_name);
+                        
+                        obj->property_count = cls->property_count;
+                        for (int i = 0; i < cls->property_count; i++) {
+                            obj->properties[i] = cls->properties[i];
+                            if (cls->properties[i].str_value) {
+                                int str_idx = add_string();
+                                if (str_idx >= 0) {
+                                    strcpy(string_pool[str_idx], cls->properties[i].str_value);
+                                    obj->properties[i].str_value = string_pool[str_idx];
+                                }
+                            }
+                        }
+                        
+                        if (cls->constructor_body) {
+                            strcpy(current_object, obj_name);
+                            
+                            char* param_ptr = params;
+                            int param_idx = 0;
+                            char* param_names[] = {"arg0", "arg1", "arg2", "arg3", "arg4"};
+                            
+                            while (*param_ptr && param_idx < 5) {
+                                while (my_isspace(*param_ptr)) param_ptr++;
+                                if (!*param_ptr) break;
+                                
+                                char param_value[100] = {0};
+                                
+                                if (*param_ptr == '\'' || *param_ptr == '"') {
+                                    char quote = *param_ptr;
+                                    param_ptr++;
+                                    int j = 0;
+                                    while (*param_ptr && *param_ptr != quote && j < 99) {
+                                        param_value[j++] = *param_ptr++;
+                                    }
+                                    param_value[j] = '\0';
+                                    if (*param_ptr == quote) param_ptr++;
+                                    
+                                    struct Variable* param_var = find_variable(param_names[param_idx]);
+                                    if (!param_var) {
+                                        int idx = add_variable();
+                                        if (idx >= 0) {
+                                            param_var = &variables[idx];
+                                            strcpy(param_var->name, param_names[param_idx]);
+                                        }
+                                    }
+                                    if (param_var) {
+                                        int str_idx = add_string();
+                                        if (str_idx >= 0) {
+                                            strcpy(string_pool[str_idx], param_value);
+                                            param_var->str_value = string_pool[str_idx];
+                                            param_var->value = 0;
+                                        }
+                                    }
+                                } 
+                                else {
+                                    int j = 0;
+                                    while (*param_ptr && !my_isspace(*param_ptr) && j < 99) {
+                                        param_value[j++] = *param_ptr++;
+                                    }
+                                    param_value[j] = '\0';
+                                    
+                                    struct Variable* param_var = find_variable(param_names[param_idx]);
+                                    if (!param_var) {
+                                        int idx = add_variable();
+                                        if (idx >= 0) {
+                                            param_var = &variables[idx];
+                                            strcpy(param_var->name, param_names[param_idx]);
+                                        }
+                                    }
+                                    if (param_var) {
+                                        param_var->value = str_to_double(param_value);
+                                        param_var->str_value = NULL;
+                                    }
+                                }
+                                
+                                param_idx++;
+                                while (my_isspace(*param_ptr)) param_ptr++;
+                            }
+                            
+                            execute(cls->constructor_body, import_depth + 1, obj_name);
+                            current_object[0] = '\0';
+                        }
+                    }
+                } else {
+                    printf("Error: class '%s' not found\n", class_name);
+                }
+            }
+            continue;
+        }
+        
+        // ==================== OBJECT METHOD CALL ====================
+        if (strstr(token, ".") && strncmp(token, "call ", 5) == 0) {
+            char* obj_method = token + 5;
+            while (my_isspace(*obj_method)) obj_method++;
+            
+            char obj_name[50];
+            char method_name[50];
+            
+            char* dot = strchr(obj_method, '.');
+            if (dot) {
+                int obj_len = dot - obj_method;
+                if (obj_len >= 50) obj_len = 49;
+                strncpy(obj_name, obj_method, obj_len);
+                obj_name[obj_len] = '\0';
+                
+                char* method_start = dot + 1;
+                int i = 0;
+                while (*method_start && !my_isspace(*method_start) && i < 49) {
+                    method_name[i++] = *method_start++;
+                }
+                method_name[i] = '\0';
+                
+                struct Object* obj = find_object(obj_name);
+                if (obj) {
+                    struct Class* cls = find_class(obj->class_name);
+                    if (cls) {
+                        for (int i = 0; i < cls->method_count; i++) {
+                            if (strcmp(cls->methods[i].name, method_name) == 0) {
+                                execute(cls->methods[i].body, import_depth + 1, obj_name);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    printf("Error: object '%s' not found\n", obj_name);
+                }
+            }
+            continue;
+        }
+        
+        // ==================== THIS.property ====================
+        if (strncmp(token, "let this.", 9) == 0 && current_object[0] != '\0') {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                char prop_name[50];
+                char* name_start = token + 9;
+                while (my_isspace(*name_start)) name_start++;
+                
+                char* name_end = eq;
+                while (name_end > name_start && my_isspace(*(name_end - 1))) name_end--;
+                
+                int name_len = name_end - name_start;
+                if (name_len >= 50) name_len = 49;
+                strncpy(prop_name, name_start, name_len);
+                prop_name[name_len] = '\0';
+                
+                char* value_str = eq + 1;
+                while (my_isspace(*value_str)) value_str++;
+                
+                struct Object* obj = find_object(current_object);
+                if (obj) {
+                    int prop_idx = -1;
+                    
+                    for (int i = 0; i < obj->property_count; i++) {
+                        if (strcmp(obj->properties[i].name, prop_name) == 0) {
+                            prop_idx = i;
+                            break;
+                        }
+                    }
+                    
+                    if (prop_idx < 0 && obj->property_count < MAX_CLASS_PROPERTIES) {
+                        prop_idx = obj->property_count++;
+                        strcpy(obj->properties[prop_idx].name, prop_name);
+                        obj->properties[prop_idx].value = 0;
+                        obj->properties[prop_idx].str_value = NULL;
+                    }
+                    
+                    if (prop_idx >= 0) {
+                        if (*value_str == '\'' || *value_str == '"') {
+                            char quote = *value_str;
+                            value_str++;
+                            char* end_quote = strchr(value_str, quote);
+                            if (end_quote) {
+                                *end_quote = '\0';
+                                int str_idx = add_string();
+                                if (str_idx >= 0) {
+                                    strcpy(string_pool[str_idx], value_str);
+                                    obj->properties[prop_idx].str_value = string_pool[str_idx];
+                                    obj->properties[prop_idx].value = 0;
+                                }
+                            }
+                        }
+                        else if (isalpha(*value_str) || *value_str == '_') {
+                            char* check = value_str;
+                            int has_operator = 0;
+                            while (*check && *check != '\n' && *check != '\r') {
+                                if (*check == '+' || *check == '-' || *check == '*' || *check == '/') {
+                                    has_operator = 1;
+                                    break;
+                                }
+                                check++;
+                            }
+                            
+                            if (has_operator) {
+                                obj->properties[prop_idx].value = eval_expression(value_str);
+                                obj->properties[prop_idx].str_value = NULL;
+                            } else {
+                                char var_name[50] = {0};
+                                int k = 0;
+                                char* v_ptr = value_str;
+                                while ((isalnum(*v_ptr) || *v_ptr == '_') && k < 49) {
+                                    var_name[k++] = *v_ptr++;
+                                }
+                                var_name[k] = '\0';
+                                
+                                struct Variable* v = find_variable(var_name);
+                                if (v) {
+                                    if (v->str_value) {
+                                        int str_idx = add_string();
+                                        if (str_idx >= 0) {
+                                            strcpy(string_pool[str_idx], v->str_value);
+                                            obj->properties[prop_idx].str_value = string_pool[str_idx];
+                                            obj->properties[prop_idx].value = 0;
+                                        }
+                                    } else {
+                                        obj->properties[prop_idx].value = v->value;
+                                        obj->properties[prop_idx].str_value = NULL;
+                                    }
+                                }
+                            }
+                        }
+                        else {
+                            obj->properties[prop_idx].value = eval_expression(value_str);
+                            obj->properties[prop_idx].str_value = NULL;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        // ==================== PRINT THIS.property ====================
+        if (strncmp(token, "print this.", 11) == 0 && current_object[0] != '\0') {
+            char prop_name[50];
+            char* prop_start = token + 11;
+            while (my_isspace(*prop_start)) prop_start++;
+            
+            int i = 0;
+            while (*prop_start && !my_isspace(*prop_start) && i < 49) {
+                prop_name[i++] = *prop_start++;
+            }
+            prop_name[i] = '\0';
+            
+            struct Object* obj = find_object(current_object);
+            if (obj) {
+                int found = 0;
+                for (int i = 0; i < obj->property_count; i++) {
+                    if (strcmp(obj->properties[i].name, prop_name) == 0) {
+                        found = 1;
+                        if (obj->properties[i].str_value) {
+                            printf("%s\n", obj->properties[i].str_value);
+                        } else {
+                            print_double(obj->properties[i].value);
+                            printf("\n");
+                        }
+                        break;
+                    }
+                }
+                if (!found) {
+                    printf("Error: property '%s' not found in object '%s'\n", prop_name, current_object);
+                }
+            }
+            continue;
+        }
 
         // ==================== IF/ELSE ====================
         if (strncmp(token, "if ", 3) == 0) {
@@ -1411,6 +2078,55 @@ void execute(const char* code, int import_depth) {
                 }
             }
 
+            else if (strchr(arg, '.')) {
+                char obj_name[50];
+                char prop_name[50];
+                
+                char* dot = strchr(arg, '.');
+                int obj_len = dot - arg;
+                if (obj_len >= 50) obj_len = 49;
+                strncpy(obj_name, arg, obj_len);
+                obj_name[obj_len] = '\0';
+                
+                char* trim_start = obj_name;
+                while (*trim_start && isspace((unsigned char)*trim_start)) {
+                    trim_start++;
+                }
+                if (trim_start != obj_name) {
+                    memmove(obj_name, trim_start, strlen(trim_start) + 1);
+                }
+                
+                char* prop_start = dot + 1;
+                int i = 0;
+                while (*prop_start && !my_isspace(*prop_start) && i < 49) {
+                    prop_name[i++] = *prop_start++;
+                }
+                prop_name[i] = '\0';
+                
+                struct Object* obj = find_object(obj_name);
+                if (obj) {
+                    int found = 0;
+                    for (int i = 0; i < obj->property_count; i++) {
+                        if (strcmp(obj->properties[i].name, prop_name) == 0) {
+                            found = 1;
+                            if (obj->properties[i].str_value) {
+                                printf("%s\n", obj->properties[i].str_value);
+                            } else {
+                                print_double(obj->properties[i].value);
+                                printf("\n");
+                            }
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        printf("Error: property '%s' not found in object '%s'\n", prop_name, obj_name);
+                    }
+                } else {
+                    printf("Error: object '%s' not found\n", obj_name);
+                }
+                continue;
+            }
+
             else {
                 char clean_arg[256];
                 clean_var_name(arg, clean_arg, sizeof(clean_arg));
@@ -1668,7 +2384,7 @@ void execute(const char* code, int import_depth) {
                     param_idx++;
                 }
 
-                execute(func->body, import_depth);
+                execute(func->body, import_depth, NULL);
 
                 for (int k = 0; k < saved_count; k++) {
                     struct Variable* v = find_variable(saved_vars[k].name);
@@ -1773,6 +2489,7 @@ void execute(const char* code, int import_depth) {
             continue;
         }
     }
+    strcpy(g_current_context_object, prev_context);
 }
 
 int file_exists(const char* path) {
@@ -1988,7 +2705,7 @@ void import_library(const char* libname, int import_depth) {
             code[size] = '\0';
             fclose(file);
 
-            execute(code, import_depth);
+            execute(code, import_depth, NULL);
             free(code);
             return;
 
@@ -2029,7 +2746,7 @@ void import_library(const char* libname, int import_depth) {
             code[size] = '\0';
             fclose(file);
 
-            execute(code, import_depth);
+            execute(code, import_depth, NULL);
             free(code);
             return;
         }
@@ -2220,7 +2937,7 @@ int main(int argc, char* argv[]) {
     code[size] = '\0';
     fclose(file);
     
-    execute(code, 0);
+    execute(code, 0, NULL);
 
     free(code);
     free_memory();
