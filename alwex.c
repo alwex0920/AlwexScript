@@ -164,7 +164,7 @@ size_t alwex_write_callback(void *contents, size_t size, size_t nmemb, void *use
 
 void http_get(const char* url) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -209,7 +209,7 @@ void http_get(const char* url) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0.1");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     
     CURLcode res = curl_easy_perform(curl);
@@ -223,7 +223,7 @@ void http_get(const char* url) {
 
 void http_post(const char* url, const char* data) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
@@ -300,7 +300,7 @@ void http_post(const char* url, const char* data) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, alwex_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&last_http_response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript/3.0.1");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "AlwexScript");
     
     CURLcode res = curl_easy_perform(curl);
     if(res != CURLE_OK) {
@@ -313,7 +313,7 @@ void http_post(const char* url, const char* data) {
 
 void http_download(const char* url, const char* filename) {
 #ifdef _WIN32
-    HINTERNET hInternet = InternetOpenA("AlwexScript/3.0.1", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA("AlwexScript", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         printf("Error: cannot initialize WinINet\n");
         return;
