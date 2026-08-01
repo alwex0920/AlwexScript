@@ -60,6 +60,12 @@ struct Variable {
     char* str_value;
 };
 
+struct Value {
+    int type;          // 0 = число, 1 = строка
+    double num;
+    char* str;         // указатель на строку в пуле (если type == 1)
+};
+
 struct Array {
     char name[50];
     double values[MAX_ARRAY_SIZE];
@@ -555,9 +561,9 @@ struct Object* find_object(const char* name) {
     return NULL;
 }
 
-double parse_expression(const char** p);
-double parse_term(const char** p);
-double parse_factor(const char** p);
+struct Value parse_expression(const char** p);
+struct Value parse_term(const char** p);
+struct Value parse_factor(const char** p);
 
 void skip_whitespace(const char** p) {
     while (**p && my_isspace(**p)) {
@@ -565,145 +571,288 @@ void skip_whitespace(const char** p) {
     }
 }
 
-double parse_factor(const char** p) {
-    skip_whitespace(p);
+static void read_identifier(const char** p, char* buf, size_t bufsize) {
+    int i = 0;
+    while (isalnum(**p) || **p == '_') {
+        if (i < (int)bufsize - 1) buf[i++] = **p;
+        (*p)++;
+    }
+    buf[i] = '\0';
+}
 
+struct Value parse_factor(const char** p) {
+    skip_whitespace(p);
+    struct Value result = {0, 0, NULL};
     int negative = 0;
+
     if (**p == '-') {
         negative = 1;
         (*p)++;
         skip_whitespace(p);
     }
-    
-    double result = 0;
-    
+
     if (**p == '(') {
         (*p)++;
         result = parse_expression(p);
         skip_whitespace(p);
-        if (**p == ')') {
-            (*p)++;
-        }
+        if (**p == ')') (*p)++;
+        if (negative && result.type == 0) result.num = -result.num;
+        return result;
     }
-    else if (isdigit(**p) || **p == '.') {
-        result = str_to_double(*p);
-        while (isdigit(**p) || **p == '.') {
-            (*p)++;
-        }
-    }
-    else if (strncmp(*p, "this.", 5) == 0) {
-        *p += 5;
-        char prop_name[50] = {0};
+
+    else if (**p == '\'' || **p == '"') {
+        char quote = **p;
+        (*p)++;
+        char temp[STRING_SIZE] = {0};
         int i = 0;
-        
-        while ((isalnum(**p) || **p == '_') && i < 49) {
-            prop_name[i++] = **p;
+        while (**p && **p != quote && i < STRING_SIZE - 1) {
+            temp[i++] = **p;
             (*p)++;
         }
-        prop_name[i] = '\0';
-        
-        extern char g_current_context_object[50];
-        
-        if (g_current_context_object[0] != '\0') {
-            struct Object* obj = find_object(g_current_context_object);
-            if (obj) {
-                for (int j = 0; j < obj->property_count; j++) {
-                    if (strcmp(obj->properties[j].name, prop_name) == 0) {
-                        result = obj->properties[j].value;
-                        break;
-                    }
+        if (**p == quote) (*p)++;
+        temp[i] = '\0';
+        int idx = add_string();
+        if (idx >= 0) {
+            strcpy(string_pool[idx], temp);
+            result.type = 1;
+            result.str = string_pool[idx];
+            result.num = 0;
+        }
+        return result;
+    }
+
+    else if (isdigit(**p) || **p == '.') {
+        result.num = str_to_double(*p);
+        while (isdigit(**p) || **p == '.') (*p)++;
+        result.type = 0;
+        if (negative) result.num = -result.num;
+        return result;
+    }
+
+    else if (isalpha(**p) || **p == '_') {
+        char name[50] = {0};
+        read_identifier(p, name, sizeof(name));
+
+        skip_whitespace(p);
+        if (**p == '(') {
+            (*p)++; 
+            struct Value args[10];
+            int arg_count = 0;
+            while (**p && **p != ')') {
+                skip_whitespace(p);
+                if (**p == ')') break;
+                args[arg_count++] = parse_expression(p);
+                skip_whitespace(p);
+                if (**p == ',') (*p)++;
+            }
+            if (**p == ')') (*p)++;
+
+            if (strcmp(name, "len") == 0) {
+                if (arg_count == 1 && args[0].type == 1) {
+                    result.type = 0;
+                    result.num = strlen(args[0].str);
+                } else {
+                    printf("Error: len() expects one string argument\n");
+                    result.type = 0; result.num = 0;
                 }
             }
+            else if (strcmp(name, "slice") == 0) {
+                if (arg_count == 3 && args[0].type == 1 && args[1].type == 0 && args[2].type == 0) {
+                    int start = (int)args[1].num;
+                    int end   = (int)args[2].num;
+                    int len = strlen(args[0].str);
+                    if (start < 0) start = 0;
+                    if (end > len) end = len;
+                    if (start > end) { start = 0; end = 0; }
+                    char temp[STRING_SIZE] = {0};
+                    strncpy(temp, args[0].str + start, end - start);
+                    temp[end - start] = '\0';
+                    int idx = add_string();
+                    if (idx >= 0) {
+                        strcpy(string_pool[idx], temp);
+                        result.type = 1;
+                        result.str = string_pool[idx];
+                    }
+                } else {
+                    printf("Error: slice(string, start, end) expects string and two numbers\n");
+                    result.type = 0; result.num = 0;
+                }
+            }
+            else if (strcmp(name, "contains") == 0) {
+                if (arg_count == 2 && args[0].type == 1 && args[1].type == 1) {
+                    result.type = 0;
+                    result.num = (strstr(args[0].str, args[1].str) != NULL) ? 1 : 0;
+                } else {
+                    printf("Error: contains(string, substring) expects two strings\n");
+                    result.type = 0; result.num = 0;
+                }
+            }
+            else if (strcmp(name, "replace") == 0) {
+                if (arg_count == 3 && args[0].type == 1 && args[1].type == 1 && args[2].type == 1) {
+                    char* pos = strstr(args[0].str, args[1].str);
+                    if (pos) {
+                        char temp[STRING_SIZE] = {0};
+                        int prefix_len = pos - args[0].str;
+                        int old_len = strlen(args[1].str);
+                        int new_len = strlen(args[2].str);
+                        if (prefix_len + new_len + strlen(pos + old_len) + 1 < STRING_SIZE) {
+                            strncpy(temp, args[0].str, prefix_len);
+                            temp[prefix_len] = '\0';
+                            strcat(temp, args[2].str);
+                            strcat(temp, pos + old_len);
+                            int idx = add_string();
+                            if (idx >= 0) {
+                                strcpy(string_pool[idx], temp);
+                                result.type = 1;
+                                result.str = string_pool[idx];
+                            }
+                        } else {
+                            printf("Error: result of replace is too long\n");
+                            result.type = 0; result.num = 0;
+                        }
+                    } else {
+                        int idx = add_string();
+                        if (idx >= 0) {
+                            strcpy(string_pool[idx], args[0].str);
+                            result.type = 1;
+                            result.str = string_pool[idx];
+                        }
+                    }
+                } else {
+                    printf("Error: replace(string, old, new) expects three strings\n");
+                    result.type = 0; result.num = 0;
+                }
+            }
+            else {
+                printf("Error: unknown function '%s'\n", name);
+                result.type = 0; result.num = 0;
+            }
+            if (negative && result.type == 0) result.num = -result.num;
+            return result;
         }
-    }
-    else if (isalpha(**p) || **p == '_') {
-        char var_name[50] = {0};
-        int i = 0;
-        
-        while ((isalnum(**p) || **p == '_') && i < 49) {
-            var_name[i++] = **p;
-            (*p)++;
-        }
-        var_name[i] = '\0';
-        
-        if (strcmp(var_name, "__rand_internal") == 0) {
-            result = (double)alwex_rand();
+
+        if (strcmp(name, "__rand_internal") == 0) {
+            result.type = 0;
+            result.num = (double)alwex_rand();
         } else {
-            struct Variable* v = find_variable(var_name);
+            struct Variable* v = find_variable(name);
             if (v) {
-                result = v->str_value ? 0 : v->value;
+                if (v->str_value) {
+                    result.type = 1;
+                    result.str = v->str_value;
+                    result.num = 0;
+                } else {
+                    result.type = 0;
+                    result.num = v->value;
+                }
             } else {
-                result = 0;
+                result.type = 0;
+                result.num = 0;
             }
         }
+        if (negative && result.type == 0) result.num = -result.num;
+        return result;
     }
-    
-    return negative ? -result : result;
+
+    result.type = 0;
+    result.num = 0;
+    return result;
 }
 
-double parse_term(const char** p) {
-    double result = parse_factor(p);
-    
+struct Value parse_term(const char** p) {
+    struct Value left = parse_factor(p);
     while (1) {
         skip_whitespace(p);
-        
         if (**p == '*') {
             (*p)++;
-            result *= parse_factor(p);
+            struct Value right = parse_factor(p);
+            if (left.type == 0 && right.type == 0) {
+                left.num *= right.num;
+            } else {
+                printf("Error: * requires numeric operands\n");
+                left.type = 0; left.num = 0;
+            }
         }
         else if (**p == '/') {
             (*p)++;
-            double divisor = parse_factor(p);
-            if (divisor != 0) {
-                result /= divisor;
+            struct Value right = parse_factor(p);
+            if (left.type == 0 && right.type == 0) {
+                if (right.num != 0) left.num /= right.num;
+                else printf("Error: division by zero\n");
             } else {
-                printf("Error: division by zero\n");
+                printf("Error: / requires numeric operands\n");
+                left.type = 0; left.num = 0;
             }
         }
         else if (**p == '%') {
             (*p)++;
-            double divisor = parse_factor(p);
-            if (divisor != 0) {
-                result = (int)result % (int)divisor;
+            struct Value right = parse_factor(p);
+            if (left.type == 0 && right.type == 0) {
+                if (right.num != 0) left.num = (int)left.num % (int)right.num;
+                else printf("Error: modulo by zero\n");
             } else {
-                printf("Error: modulo by zero\n");
+                printf("Error: %% requires numeric operands\n");
+                left.type = 0; left.num = 0;
             }
         }
-        else {
-            break;
-        }
+        else break;
     }
-    
-    return result;
+    return left;
 }
 
-double parse_expression(const char** p) {
-    double result = parse_term(p);
-    
+struct Value parse_expression(const char** p) {
+    struct Value left = parse_term(p);
     while (1) {
         skip_whitespace(p);
-        
         if (**p == '+') {
             (*p)++;
-            result += parse_term(p);
+            struct Value right = parse_term(p);
+            if (left.type == 0 && right.type == 0) {
+                left.num += right.num;
+            }
+            else if (left.type == 1 && right.type == 1) {
+                char temp[STRING_SIZE * 2] = {0};
+                strcpy(temp, left.str);
+                strcat(temp, right.str);
+                int idx = add_string();
+                if (idx >= 0) {
+                    strcpy(string_pool[idx], temp);
+                    left.str = string_pool[idx];
+                } else {
+                    printf("Error: string pool full\n");
+                    left.type = 0; left.num = 0;
+                }
+            }
+            else {
+                printf("Error: + operands must be both numbers or both strings\n");
+                left.type = 0; left.num = 0;
+            }
         }
         else if (**p == '-') {
             (*p)++;
-            result -= parse_term(p);
+            struct Value right = parse_term(p);
+            if (left.type == 0 && right.type == 0) {
+                left.num -= right.num;
+            } else {
+                printf("Error: - requires numeric operands\n");
+                left.type = 0; left.num = 0;
+            }
         }
-        else {
-            break;
-        }
+        else break;
     }
-    
-    return result;
+    return left;
+}
+
+struct Value evaluate(const char* expr) {
+    const char* p = expr;
+    return parse_expression(&p);
 }
 
 double eval_expression(const char* expr) {
-    const char* p = expr;
-    double result = parse_expression(&p);
-    return result;
+    struct Value v = evaluate(expr);
+    return v.type == 0 ? v.num : 0;
 }
+
 
 int eval_condition(const char* cond) {
     const char* operators[] = {"==", "!=", ">=", "<=", ">", "<"};
@@ -2158,10 +2307,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                 char var_name[50];
                 char* name_start = token + 4;
                 while (my_isspace(*name_start)) name_start++;
-                
                 char* name_end = eq;
                 while (name_end > name_start && my_isspace(*(name_end - 1))) name_end--;
-                
                 int name_len = name_end - name_start;
                 if (name_len >= (int)sizeof(var_name)) name_len = sizeof(var_name) - 1;
                 memcpy(var_name, name_start, name_len);
@@ -2180,6 +2327,7 @@ void execute(const char* code, int import_depth, const char* context_object) {
                 }
 
                 if (v) {
+                    // Если правая часть начинается с кавычки – просто строка
                     if (*value_str == '\'' || *value_str == '"') {
                         char quote = *value_str;
                         char* end_quote = strchr(value_str + 1, quote);
@@ -2193,14 +2341,16 @@ void execute(const char* code, int import_depth, const char* context_object) {
                                 v->value = 0;
                             }
                         }
-                    } 
-                    else if (strstr(value_str, "__rand_internal")) {
-                        v->value = eval_expression(value_str);
-                        v->str_value = NULL;
-                    }
-                    else {
-                        v->value = eval_expression(value_str);
-                        v->str_value = NULL;
+                    } else {
+                        // Вычисляем выражение с помощью нового evaluate
+                        struct Value val = evaluate(value_str);
+                        if (val.type == 1) {
+                            v->str_value = val.str;
+                            v->value = 0;
+                        } else {
+                            v->value = val.num;
+                            v->str_value = NULL;
+                        }
                     }
                 }
             } else {
@@ -2485,6 +2635,88 @@ void execute(const char* code, int import_depth, const char* context_object) {
                 printf("true\n");
             } else {
                 printf("false\n");
+            }
+            continue;
+        }
+        // ==================== STR_SPLIT ====================
+        else if (strncmp(token, "str_split ", 10) == 0) {
+            char* args = token + 10;
+            while (my_isspace(*args)) args++;
+
+            char str_var[50] = {0};
+            char delim[50] = {0};
+            char arr_name[50] = {0};
+
+            while (my_isspace(*args)) args++;
+            int i = 0;
+            while (*args && !my_isspace(*args) && i < 49) {
+                str_var[i++] = *args++;
+            }
+            str_var[i] = '\0';
+
+            while (my_isspace(*args)) args++;
+            if (*args == '\'' || *args == '"') {
+                char quote = *args++;
+                i = 0;
+                while (*args && *args != quote && i < 49) {
+                    delim[i++] = *args++;
+                }
+                if (*args == quote) args++;
+                delim[i] = '\0';
+            } else {
+                i = 0;
+                while (*args && !my_isspace(*args) && i < 49) {
+                    delim[i++] = *args++;
+                }
+                delim[i] = '\0';
+            }
+
+            while (my_isspace(*args)) args++;
+            i = 0;
+            while (*args && !my_isspace(*args) && i < 49) {
+                arr_name[i++] = *args++;
+            }
+            arr_name[i] = '\0';
+
+            if (str_var[0] == '\0' || delim[0] == '\0' || arr_name[0] == '\0') {
+                printf("Error: str_split requires three arguments: str_var delim array_name\n");
+                continue;
+            }
+
+            struct Variable* sv = find_variable(str_var);
+            if (sv && sv->str_value) {
+                struct Array* arr = find_array(arr_name);
+                if (!arr) {
+                    int idx = add_array();
+                    if (idx < 0) continue;
+                    arr = &arrays[idx];
+                    strcpy(arr->name, arr_name);
+                    arr->size = 0;
+                    arr->is_string_array = 1;
+                } else {
+                    arr->size = 0;
+                    arr->is_string_array = 1;
+                }
+
+                char* str_copy = malloc(strlen(sv->str_value) + 1);
+                if (!str_copy) {
+                    printf("Error: memory allocation for split\n");
+                    continue;
+                }
+                strcpy(str_copy, sv->str_value);
+
+                char* token_ptr = strtok(str_copy, delim);
+                while (token_ptr && arr->size < MAX_ARRAY_SIZE) {
+                    int str_idx = add_string();
+                    if (str_idx >= 0) {
+                        strcpy(string_pool[str_idx], token_ptr);
+                        arr->strings[arr->size++] = string_pool[str_idx];
+                    }
+                    token_ptr = strtok(NULL, delim);
+                }
+                free(str_copy);
+            } else {
+                printf("Error: str_split requires a string variable\n");
             }
             continue;
         }
