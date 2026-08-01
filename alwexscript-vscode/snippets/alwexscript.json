@@ -1,0 +1,613 @@
+{
+  "Class Definition": {
+    "prefix": "class",
+    "body": [
+      "class ${1:ClassName}",
+      "    let ${2:property} = ${3:0}",
+      "    ",
+      "    func constructor",
+      "        let this.${2:property} = arg0",
+      "    end",
+      "    ",
+      "    func ${4:methodName}",
+      "        $0",
+      "    end",
+      "end"
+    ],
+    "description": "Create a new class (v3.1 — OOP)"
+  },
+  "Class with Inheritance": {
+    "prefix": "classext",
+    "body": [
+      "class ${1:ChildClass} extends ${2:ParentClass}",
+      "    let ${3:property} = ${4:0}",
+      "    ",
+      "    func constructor",
+      "        let this.${3:property} = arg0",
+      "    end",
+      "    ",
+      "    func ${5:methodName}",
+      "        $0",
+      "    end",
+      "end"
+    ],
+    "description": "Create a child class with inheritance (v3.1 — OOP)"
+  },
+  "New Object": {
+    "prefix": "new",
+    "body": [
+      "let ${1:obj} = new ${2:ClassName} ${3:arg0} ${4:arg1}"
+    ],
+    "description": "Create new object instance (v3.1 — OOP)"
+  },
+  "Constructor": {
+    "prefix": "constructor",
+    "body": [
+      "func constructor",
+      "    let this.${1:property} = arg0",
+      "    $0",
+      "end"
+    ],
+    "description": "Define class constructor (v3.1 — OOP)"
+  },
+  "Class Method": {
+    "prefix": "method",
+    "body": [
+      "func ${1:methodName}",
+      "    $0",
+      "end"
+    ],
+    "description": "Define a class method (v3.1 — OOP)"
+  },
+  "Call Object Method": {
+    "prefix": "callm",
+    "body": [
+      "call ${1:object}.${2:method}"
+    ],
+    "description": "Call object method (v3.1 — OOP)"
+  },
+  "This Property Get": {
+    "prefix": "thisp",
+    "body": [
+      "this.${1:property}"
+    ],
+    "description": "Access object property via this (v3.1 — OOP)"
+  },
+  "Let This Property": {
+    "prefix": "letthis",
+    "body": [
+      "let this.${1:property} = ${2:value}"
+    ],
+    "description": "Set object property (v3.1 — OOP)"
+  },
+  "Print This Property": {
+    "prefix": "printthis",
+    "body": [
+      "print this.${1:property}"
+    ],
+    "description": "Print object property (v3.1 — OOP)"
+  },
+  "Print Object Property": {
+    "prefix": "printobj",
+    "body": [
+      "print ${1:object}.${2:property}"
+    ],
+    "description": "Print object property (v3.1 — OOP)"
+  },
+  "Simple Class Example": {
+    "prefix": "class_simple",
+    "body": [
+      "class ${1:Person}",
+      "    let name = ''",
+      "    let age = 0",
+      "    ",
+      "    func constructor",
+      "        let this.name = arg0",
+      "        let this.age = arg1",
+      "    end",
+      "    ",
+      "    func greet",
+      "        print 'Hello, my name is:'",
+      "        print this.name",
+      "    end",
+      "end",
+      "",
+      "let ${2:person} = new ${1:Person} '${3:Alex}' ${4:25}",
+      "print ${2:person}.name",
+      "call ${2:person}.greet"
+    ],
+    "description": "Simple class with object example (v3.1 — OOP)"
+  },
+  "OOP Inheritance Example": {
+    "prefix": "oop_example",
+    "body": [
+      "# Base class",
+      "class ${1:Animal}",
+      "    let name = ''",
+      "    let age = 0",
+      "    ",
+      "    func speak",
+      "        print 'Some sound...'",
+      "    end",
+      "    ",
+      "    func info",
+      "        print 'Name:'",
+      "        print this.name",
+      "    end",
+      "end",
+      "",
+      "# Child class with inheritance",
+      "class ${2:Dog} extends ${1:Animal}",
+      "    let breed = ''",
+      "    ",
+      "    func constructor",
+      "        let this.name = arg0",
+      "        let this.breed = arg1",
+      "    end",
+      "    ",
+      "    # Override parent method",
+      "    func speak",
+      "        print 'Woof! Woof!'",
+      "    end",
+      "    ",
+      "    func fetch",
+      "        print 'Fetching the ball!'",
+      "    end",
+      "end",
+      "",
+      "# Create objects",
+      "let ${3:dog} = new ${2:Dog} 'Rex' 'German Shepherd'",
+      "print ${3:dog}.name",
+      "print ${3:dog}.breed",
+      "call ${3:dog}.speak",
+      "call ${3:dog}.info",
+      "call ${3:dog}.fetch"
+    ],
+    "description": "Full OOP example with inheritance (v3.1 — OOP)"
+  },
+  "Game Object Example": {
+    "prefix": "game_object",
+    "body": [
+      "class ${1:Entity}",
+      "    let x = 0",
+      "    let y = 0",
+      "    let health = 100",
+      "    ",
+      "    func constructor",
+      "        let this.x = arg0",
+      "        let this.y = arg1",
+      "    end",
+      "    ",
+      "    func move",
+      "        let this.x = this.x plus arg0",
+      "        let this.y = this.y plus arg1",
+      "    end",
+      "    ",
+      "    func status",
+      "        print 'Position:'",
+      "        print this.x",
+      "        print this.y",
+      "        print 'Health:'",
+      "        print this.health",
+      "    end",
+      "end",
+      "",
+      "class ${2:Player} extends ${1:Entity}",
+      "    let score = 0",
+      "    ",
+      "    func constructor",
+      "        let this.x = arg0",
+      "        let this.y = arg1",
+      "        let this.score = 0",
+      "    end",
+      "    ",
+      "    func collect",
+      "        let this.score = this.score plus 10",
+      "        print 'Score:'",
+      "        print this.score",
+      "    end",
+      "end",
+      "",
+      "let ${3:player} = new ${2:Player} 0 0",
+      "call ${3:player}.status",
+      "call ${3:player}.move 5 3",
+      "call ${3:player}.collect",
+      "call ${3:player}.status"
+    ],
+    "description": "Game object with inheritance example (v3.1 — OOP)"
+  },
+  "Array Declaration": {
+    "prefix": "array",
+    "body": [
+      "let ${1:arrayName} = [${2:element1}, ${3:element2}, ${4:element3}]"
+    ],
+    "description": "Create an array (v3.0)"
+  },
+  "Array Get": {
+    "prefix": "arr_get",
+    "body": [
+      "arr_get ${1:arrayName} ${2:index}",
+      "let ${3:result} = arr_get_result"
+    ],
+    "description": "Get array element at index (v3.0)"
+  },
+  "Array Set": {
+    "prefix": "arr_set",
+    "body": [
+      "arr_set ${1:arrayName} ${2:index} ${3:value}"
+    ],
+    "description": "Set array element at index (v3.0)"
+  },
+  "Array Length": {
+    "prefix": "arr_length",
+    "body": [
+      "arr_length ${1:arrayName}",
+      "let ${2:len} = arr_length_result"
+    ],
+    "description": "Get array length (v3.0)"
+  },
+  "Array Push": {
+    "prefix": "arr_push",
+    "body": [
+      "arr_push ${1:arrayName} ${2:value}"
+    ],
+    "description": "Add element to end of array (v3.0)"
+  },
+  "Array Loop": {
+    "prefix": "array_loop",
+    "body": [
+      "let ${1:i} = 0",
+      "arr_length ${2:arrayName}",
+      "let ${3:len} = arr_length_result",
+      "",
+      "while ${1:i} < ${3:len}",
+      "    arr_get ${2:arrayName} ${1:i}",
+      "    ${4:# Process arr_get_result}",
+      "    ${1:i}++",
+      "endloop"
+    ],
+    "description": "Loop through array elements (v3.0)"
+  },
+  "HTTP GET Request": {
+    "prefix": "http_get",
+    "body": [
+      "http_get '${1:https://api.example.com}'",
+      "print http_response"
+    ],
+    "description": "HTTP GET request (v3.0)"
+  },
+  "HTTP POST Request": {
+    "prefix": "http_post",
+    "body": [
+      "http_post '${1:https://api.example.com}' '${2:key=value}'",
+      "print http_response"
+    ],
+    "description": "HTTP POST request (v3.0)"
+  },
+  "HTTP Download File": {
+    "prefix": "http_download",
+    "body": [
+      "http_download '${1:https://example.com/file.zip}' '${2:downloaded.zip}'",
+      "print 'File downloaded!'"
+    ],
+    "description": "Download file from internet (v3.0)"
+  },
+  "While Loop with Break": {
+    "prefix": "while_break",
+    "body": [
+      "let ${1:i} = 0",
+      "while ${1:i} < ${2:10}",
+      "    ${3:print ${1:i}}",
+      "    ${1:i}++",
+      "    ",
+      "    if ${1:i} == ${4:5}",
+      "        break",
+      "    end",
+      "endloop"
+    ],
+    "description": "While loop with break (v3.0)"
+  },
+  "File Write": {
+    "prefix": "file_write",
+    "body": [
+      "file_write '${1:filename.txt}' '${2:Content}'"
+    ],
+    "description": "Write data to file (v3.0)"
+  },
+  "File Read": {
+    "prefix": "file_read",
+    "body": [
+      "file_read '${1:filename.txt}'"
+    ],
+    "description": "Read file contents (v3.0)"
+  },
+  "Variable Declaration": {
+    "prefix": "let",
+    "body": [
+      "let ${1:variable} = ${2:value}"
+    ],
+    "description": "Declare variable (v3.0)"
+  },
+  "Print Statement": {
+    "prefix": "print",
+    "body": [
+      "print '${1:Hello, World!}'"
+    ],
+    "description": "Print text (v3.0)"
+  },
+  "Print Variable": {
+    "prefix": "printv",
+    "body": [
+      "print ${1:variable}"
+    ],
+    "description": "Print variable value (v3.0)"
+  },
+  "Print Array Element": {
+    "prefix": "print_arr",
+    "body": [
+      "print ${1:arrayName}[${2:index}]"
+    ],
+    "description": "Print array element (v3.0)"
+  },
+  "Input String": {
+    "prefix": "inp_string",
+    "body": [
+      "inp string ${1:name} '${2:Enter name: }'"
+    ],
+    "description": "Input string (v3.0)"
+  },
+  "Input Integer": {
+    "prefix": "inp_int",
+    "body": [
+      "inp int ${1:age} '${2:Enter age: }'"
+    ],
+    "description": "Input integer (v3.0)"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition}",
+      "    ${2:# code}",
+      "end"
+    ],
+    "description": "If statement (v3.0)"
+  },
+  "If-Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition}",
+      "    ${2:# true}",
+      "else",
+      "    ${3:# false}",
+      "end"
+    ],
+    "description": "If-else statement (v3.0)"
+  },
+  "If-Elif-Else Statement": {
+    "prefix": "ifelif",
+    "body": [
+      "if ${1:condition1}",
+      "    ${2:# code}",
+      "elif ${3:condition2}",
+      "    ${4:# code}",
+      "else",
+      "    ${5:# code}",
+      "end"
+    ],
+    "description": "If-elif-else statement (v3.0)"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "let ${1:i} = 0",
+      "while ${1:i} < ${2:10}",
+      "    ${3:# code}",
+      "    ${1:i}++",
+      "endloop"
+    ],
+    "description": "While loop (v3.0)"
+  },
+  "Function Definition": {
+    "prefix": "func",
+    "body": [
+      "func ${1:functionName}",
+      "    ${2:# Function body}",
+      "end"
+    ],
+    "description": "Function definition (v3.0)"
+  },
+  "Function with Return": {
+    "prefix": "funcret",
+    "body": [
+      "func ${1:functionName}",
+      "    ${2:# Function body}",
+      "    let ${1:functionName}_result = ${3:value}",
+      "end"
+    ],
+    "description": "Function with result (v3.0)"
+  },
+  "Function Call": {
+    "prefix": "call",
+    "body": [
+      "call ${1:functionName}"
+    ],
+    "description": "Function call (v3.0)"
+  },
+  "Function Call with Args": {
+    "prefix": "callargs",
+    "body": [
+      "call ${1:functionName} ${2:arg1} ${3:arg2}"
+    ],
+    "description": "Function call with arguments (v3.0)"
+  },
+  "Import Library": {
+    "prefix": "import",
+    "body": [
+      "import '${1:random}'"
+    ],
+    "description": "Import library (v3.0)"
+  },
+  "Random Integer": {
+    "prefix": "randint",
+    "body": [
+      "import 'random'",
+      "let min = ${1:1}",
+      "let max = ${2:100}",
+      "call randint",
+      "print randint_result"
+    ],
+    "description": "Generate random integer (v3.0)"
+  },
+  "Increment": {
+    "prefix": "inc",
+    "body": [
+      "${1:variable}++"
+    ],
+    "description": "Increment variable (v3.0)"
+  },
+  "Decrement": {
+    "prefix": "dec",
+    "body": [
+      "${1:variable}--"
+    ],
+    "description": "Decrement variable (v3.0)"
+  },
+  "Break Loop": {
+    "prefix": "break",
+    "body": [
+      "break"
+    ],
+    "description": "Exit loop (v3.0)"
+  },
+  "Math Expression": {
+    "prefix": "expr",
+    "body": [
+      "let ${1:result} = (${2:a} plus ${3:b}) mul ${4:c}"
+    ],
+    "description": "Math expression (v3.0)"
+  },
+  "Execute Command": {
+    "prefix": "exec",
+    "body": [
+      "exec ${1:command}"
+    ],
+    "description": "Execute system command (v3.0)"
+  },
+  "Wait": {
+    "prefix": "wait",
+    "body": [
+      "wait ${1:seconds}"
+    ],
+    "description": "Wait for seconds (v3.0)"
+  },
+  "Complete Array Example": {
+    "prefix": "array_full",
+    "body": [
+      "# Create array",
+      "let ${1:numbers} = [10, 20, 30, 40, 50]",
+      "",
+      "# Get element",
+      "arr_get ${1:numbers} 0",
+      "print arr_get_result",
+      "",
+      "# Get length",
+      "arr_length ${1:numbers}",
+      "let len = arr_length_result",
+      "",
+      "# Loop through",
+      "let i = 0",
+      "while i < len",
+      "    arr_get ${1:numbers} i",
+      "    print arr_get_result",
+      "    i++",
+      "endloop"
+    ],
+    "description": "Complete array usage example (v3.0)"
+  },
+  "API Request Example": {
+    "prefix": "api_example",
+    "body": [
+      "print 'Fetching data...'",
+      "",
+      "http_get '${1:https://api.example.com}'",
+      "",
+      "if http_response != ''",
+      "    print 'Response:'",
+      "    print http_response",
+      "else",
+      "    print 'Error: No response'",
+      "end"
+    ],
+    "description": "API request example (v3.0)"
+  }
+    "String Length": {
+    "prefix": "len",
+    "body": [
+      "let ${1:length} = len(${2:string})"
+    ],
+    "description": "Get length of a string (v3.2)"
+  },
+  "String Slice": {
+    "prefix": "slice",
+    "body": [
+      "let ${1:sub} = slice(${2:string}, ${3:start}, ${4:end})"
+    ],
+    "description": "Extract substring (v3.2)"
+  },
+  "String Contains": {
+    "prefix": "contains",
+    "body": [
+      "if contains(${1:string}, ${2:substring})",
+      "    ${3:# code}",
+      "end"
+    ],
+    "description": "Check if string contains substring (v3.2)"
+  },
+  "String Replace": {
+    "prefix": "replace",
+    "body": [
+      "let ${1:result} = replace(${2:string}, ${3:old}, ${4:new})"
+    ],
+    "description": "Replace substring (v3.2)"
+  },
+  "String Concat": {
+    "prefix": "concat",
+    "body": [
+      "let ${1:result} = concat(${2:str1}, ${3:str2})"
+    ],
+    "description": "Concatenate two strings (v3.2)"
+  },
+  "String Split": {
+    "prefix": "str_split",
+    "body": [
+      "str_split ${1:string_var} ${2:delimiter} ${3:array_name}"
+    ],
+    "description": "Split string into array (v3.2)"
+  },
+  "String Operations Example": {
+    "prefix": "string_example",
+    "body": [
+      "let s = 'Hello, World!'",
+      "let len_s = len(s)",
+      "print len_s",
+      "",
+      "let sub = slice(s, 0, 5)",
+      "print sub",
+      "",
+      "if contains(s, 'World')",
+      "    print 'Found World'",
+      "end",
+      "",
+      "let replaced = replace(s, 'World', 'Alwex')",
+      "print replaced",
+      "",
+      "let s2 = s + ' - AlwexScript'",
+      "print s2",
+      "",
+      "str_split s2 ' ' arr",
+      "print arr[0]",
+      "print arr[1]"
+    ],
+    "description": "Complete example of new string operations (v3.2)"
+  }
+}
