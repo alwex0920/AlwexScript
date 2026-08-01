@@ -5,7 +5,7 @@ on:
     types: [published]
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -15,24 +15,21 @@ jobs:
         id: vars
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
-      - name: Install build tools and libraries
+      - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             gcc-mingw-w64-x86-64 \
-            gcc-mingw-w64-i686 \
             dpkg-dev \
             curl \
-            libcurl4-openssl-dev \
-            wine \
-            wget
+            libcurl4-openssl-dev
 
       - name: Build Linux binary
         run: |
           gcc -O2 -o alwex alwex.c -lcurl -lm
           strip alwex
 
-      - name: Build Windows binary
+      - name: Build Windows binary (cross-compile)
         run: |
           x86_64-w64-mingw32-gcc -O2 -o alwex.exe alwex.c -lwininet -lws2_32 -static
           strip alwex.exe
@@ -54,24 +51,6 @@ jobs:
           EOF
           dpkg-deb --build package alwexscript-${{ env.VERSION }}.deb
 
-      - name: Install Inno Setup (portable)
-        run: |
-          # Попытка скачать с GitHub (надёжнее)
-          curl -L -f -o is.exe "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" || \
-          curl -L -f -o is.exe "https://jrsoftware.org/download.php/is.exe?ver=6.7.3" || \
-          wget --user-agent="Mozilla/5.0" -O is.exe "https://files.jrsoftware.org/is/6/innosetup-6.7.3.exe"
-          if [ ! -f is.exe ]; then
-            echo "Failed to download Inno Setup"
-            exit 1
-          fi
-          wine is.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-
-      - name: Build Windows installer
-        run: |
-          cp alwex.exe .
-          wine "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" setup.iss /DMyAppVersion=${{ env.VERSION }}
-          mv AlwexScript-Setup-*.exe AlwexScript-Setup-${{ env.VERSION }}.exe
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -85,14 +64,66 @@ jobs:
           vsce package
           mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
 
+      - name: Upload artifacts (for later release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            alwex
+            alwex.exe
+            alwexscript-${{ env.VERSION }}.deb
+            alwexscript-${{ env.VERSION }}.vsix
+
+  build-windows-installer:
+    runs-on: windows-latest
+    needs: build-linux
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        id: vars
+        run: echo "VERSION=${env:GITHUB_REF_NAME#v}" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Download Linux artifacts (to get alwex.exe)
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+
+      - name: Build Windows installer with Inno Setup
+        run: |
+          # Inno Setup is pre-installed on windows-latest runner
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
+        shell: pwsh
+
+      - name: Rename installer
+        run: |
+          mv AlwexScript-Setup-*.exe AlwexScript-Setup-$env:VERSION.exe
+        shell: pwsh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: AlwexScript-Setup-${{ env.VERSION }}.exe
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows-installer]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
       - name: Upload assets to release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            alwex
-            alwex.exe
-            alwexscript-${{ env.VERSION }}.deb
-            AlwexScript-Setup-${{ env.VERSION }}.exe
-            alwexscript-${{ env.VERSION }}.vsix
+            linux-artifacts/alwex
+            linux-artifacts/alwex.exe
+            linux-artifacts/alwexscript-${{ env.VERSION }}.deb
+            linux-artifacts/alwexscript-${{ env.VERSION }}.vsix
+            windows-installer/AlwexScript-Setup-${{ env.VERSION }}.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
