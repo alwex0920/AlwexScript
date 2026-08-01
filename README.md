@@ -1,12 +1,12 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.1.0
-**Supported OS**: Windows, Linux, macOS
-**Latest Updates**: Added OOP
+**Version**: 3.2.0  
+**Supported OS**: Windows, Linux, macOS  
+**Latest Updates**: Added full string operations (v3.2.0), OOP (v3.1.0)
 
 ## Language Features
 - Simple syntax similar to natural language
 - Dynamic typing
-- Support for numbers and strings
+- Full string support: concatenation, length, substring, contains, replace, split
 - Flow control (conditions, loops)
 - Functions and modularity
 - Built-in I/O operations
@@ -15,9 +15,9 @@
 - File operations (read, write, append, check existence)
 - Dynamic memory management (Unix systems)
 - Arrays: full support for lists of data
-- Loop control: endloop works as break statement
+- Loop control: break statement
 - OOP and Inheritance
-- Install library
+- Install library with package manager
 
 ## Installation
 ### Linux/macOS
@@ -130,6 +130,39 @@ arr_length fruits           # Get array length
 print arr_length_result     # Output: 3
 
 arr_push scores 88          # Add element to end
+```
+### String Operations (NEW in v3.2.0)
+```alw
+let s = "Hello, World!"
+
+# Length
+let n = len(s)              # or length(s)
+print n                     # Output: 13
+
+# Substring
+let sub = slice(s, 0, 5)    # or substr(s, 0, 5)
+print sub                   # Output: Hello
+
+# Contains
+if contains(s, "World")
+    print "Found World"
+end
+
+# Replace
+let r = replace(s, "World", "Alwex")
+print r                     # Output: Hello, Alwex!
+
+# Concatenation (using + or concat)
+let s2 = s + " - AlwexScript"
+print s2
+
+let s3 = concat(s, " - AlwexScript")
+print s3
+
+# Split string into array
+str_split s " " arr         # arr becomes ["Hello,", "World!"]
+print arr[0]                # Output: Hello,
+print arr[1]                # Output: World!
 ```
 ### OOP
 ```alw
@@ -372,6 +405,7 @@ alwex install name_lib
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.2.0: Added string operations (len, slice, contains, replace, concat, str_split)
 - v3.1.0: Added OOP
 - v3.0.1: Fixed print
 - v3.0: The installation logic has been added and the library search system has been redesigned, bugs have been fixed
