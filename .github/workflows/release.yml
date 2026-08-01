@@ -10,13 +10,18 @@ permissions:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set version
-        id: vars
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+        id: set-version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Install build tools
         run: |
@@ -53,7 +58,6 @@ jobs:
            AlwexScript is a lightweight scripting language.
           EOF
           dpkg-deb --build package alwexscript-${{ env.VERSION }}.deb
-          ls -la *.deb
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,14 +70,7 @@ jobs:
           npm install
           npm install -g @vscode/vsce
           npx @vscode/vsce package
-          ls -la *.vsix
           mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
-          cd ..
-          ls -la *.vsix
-
-      - name: List built files (debug)
-        run: |
-          ls -la
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -92,10 +89,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set version
+      - name: Set version from linux job output
         run: |
-          $ver = "${{ github.ref_name }}" -replace '^v', ''
-          echo "VERSION=$ver" >> $env:GITHUB_ENV
+          $version = "${{ needs.build-linux.outputs.version }}"
+          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
       - name: Download Linux artifacts
@@ -103,20 +100,9 @@ jobs:
         with:
           name: linux-artifacts
 
-      - name: Debug show version and files
-        run: |
-          Write-Host "VERSION is: $env:VERSION"
-          Get-ChildItem
-        shell: pwsh
-
-      - name: Build Windows installer with Inno Setup
+      - name: Build Windows installer
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
-        shell: pwsh
-
-      - name: List files after build
-        run: |
-          Get-ChildItem -Name AlwexScript-Setup-*.exe
         shell: pwsh
 
       - name: Rename installer
@@ -141,18 +127,14 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      - name: List downloaded files
-        run: |
-          find . -type f
-
       - name: Upload assets to release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             linux-artifacts/alwex
             linux-artifacts/alwex.exe
-            linux-artifacts/alwexscript-${{ env.VERSION }}.deb
-            linux-artifacts/alwexscript-${{ env.VERSION }}.vsix
-            windows-installer/AlwexScript-Setup-${{ env.VERSION }}.exe
+            linux-artifacts/alwexscript-${{ needs.build-linux.outputs.version }}.deb
+            linux-artifacts/alwexscript-${{ needs.build-linux.outputs.version }}.vsix
+            windows-installer/AlwexScript-Setup-${{ needs.build-linux.outputs.version }}.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
