@@ -53,6 +53,7 @@ jobs:
            AlwexScript is a lightweight scripting language.
           EOF
           dpkg-deb --build package alwexscript-${{ env.VERSION }}.deb
+          ls -la *.deb
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,7 +66,14 @@ jobs:
           npm install
           npm install -g @vscode/vsce
           npx @vscode/vsce package
+          ls -la *.vsix
           mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
+          cd ..
+          ls -la *.vsix
+
+      - name: List built files (debug)
+        run: |
+          ls -la
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -85,8 +93,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version
-        id: vars
-        run: echo "VERSION=${env:GITHUB_REF_NAME#v}" >> $env:GITHUB_ENV
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          echo "VERSION=$ver" >> $env:GITHUB_ENV
         shell: pwsh
 
       - name: Download Linux artifacts
@@ -94,20 +103,26 @@ jobs:
         with:
           name: linux-artifacts
 
-      - name: Build Windows installer
+      - name: Debug: show version and files
+        run: |
+          Write-Host "VERSION is: $env:VERSION"
+          Get-ChildItem
+        shell: pwsh
+
+      - name: Build Windows installer with Inno Setup
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
         shell: pwsh
 
-      - name: List files before rename
+      - name: List files after build
         run: |
           Get-ChildItem -Name AlwexScript-Setup-*.exe
         shell: pwsh
 
       - name: Rename installer
         run: |
-           $file = Get-ChildItem AlwexScript-Setup-*.exe | Select-Object -First 1
-           Rename-Item -Path $file.Name -NewName "AlwexScript-Setup-$env:VERSION.exe"
+          $file = Get-ChildItem AlwexScript-Setup-*.exe | Select-Object -First 1
+          Rename-Item -Path $file.Name -NewName "AlwexScript-Setup-$env:VERSION.exe"
         shell: pwsh
 
       - name: Upload installer artifact
@@ -123,15 +138,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set version
-        id: vars
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      - name: List downloaded files
+        run: |
+          find . -type f
 
       - name: Upload assets to release
         uses: softprops/action-gh-release@v1
