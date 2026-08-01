@@ -4,7 +4,6 @@ on:
   release:
     types: [published]
 
-# Даём права на запись в релизы
 permissions:
   contents: write
 
@@ -58,7 +57,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'  # Актуальная LTS
+          node-version: '22.x'
 
       - name: Build VS Code extension
         run: |
@@ -68,7 +67,12 @@ jobs:
           npx @vscode/vsce package
           mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
 
-      - name: Upload artifacts (for later release)
+      - name: List built files (debug)
+        run: |
+          ls -la
+          ls -la alwexscript-vscode/ || true
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifacts
@@ -90,12 +94,12 @@ jobs:
         run: echo "VERSION=${env:GITHUB_REF_NAME#v}" >> $env:GITHUB_ENV
         shell: pwsh
 
-      - name: Download Linux artifacts (to get alwex.exe)
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
           name: linux-artifacts
 
-      - name: Build Windows installer with Inno Setup
+      - name: Build Windows installer
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
         shell: pwsh
@@ -120,6 +124,10 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      - name: List downloaded files
+        run: |
+          find . -type f
 
       - name: Upload assets to release
         uses: softprops/action-gh-release@v1
