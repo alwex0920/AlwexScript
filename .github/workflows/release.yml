@@ -1,0 +1,106 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Извлекаем версию из тега (убираем 'v')
+      - name: Set version
+        id: vars
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      # -------------------- Установка зависимостей --------------------
+      - name: Install build tools and libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-mingw-w64-x86-64 \
+            gcc-mingw-w64-i686 \
+            dpkg-dev \
+            curl \
+            libcurl4-openssl-dev \
+            wine \
+            wget
+
+      # -------------------- Сборка Linux-бинарника --------------------
+      - name: Build Linux binary
+        run: |
+          gcc -O2 -o alwex alwex.c -lcurl -lm
+          strip alwex
+
+      # -------------------- Сборка Windows-бинарника (64-bit) ----------
+      - name: Build Windows binary
+        run: |
+          x86_64-w64-mingw32-gcc -O2 -o alwex.exe alwex.c -lwininet -lws2_32 -static
+          strip alwex.exe
+
+      # -------------------- Сборка deb-пакета -------------------------
+      - name: Prepare deb package
+        run: |
+          mkdir -p package/usr/bin
+          cp alwex package/usr/bin/
+          mkdir -p package/DEBIAN
+          cat > package/DEBIAN/control << EOF
+          Package: alwexscript
+          Version: ${{ env.VERSION }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Alwex Developer <alwex0920@gmail.com>
+          Description: AlwexScript interpreter
+           AlwexScript is a lightweight scripting language.
+          EOF
+          dpkg-deb --build package alwexscript-${{ env.VERSION }}.deb
+
+      # -------------------- Установка Inno Setup -----------------------
+      - name: Install Inno Setup (portable)
+        run: |
+          wget -qO- "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe" -O is.exe
+          # Устанавливаем через wine в тихом режиме
+          wine is.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          # Добавляем iscc в PATH (через wine)
+          echo "C:\\Program Files (x86)\\Inno Setup 6" > iscc_path.txt
+
+      # -------------------- Сборка Windows-установщика ----------------
+      - name: Build Windows installer
+        run: |
+          # Копируем alwex.exe в корень (где ожидается setup.iss)
+          cp alwex.exe .
+          # Запускаем компиляцию с подстановкой версии
+          wine "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" setup.iss /DMyAppVersion=${{ env.VERSION }}
+          # Переименовываем получившийся файл (ожидается, что он будет в OutputDir)
+          mv AlwexScript-Setup-*.exe AlwexScript-Setup-${{ env.VERSION }}.exe
+
+      # -------------------- Сборка VS Code расширения -----------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build VS Code extension
+        run: |
+          cd alwexscript-vscode
+          npm install
+          npm install -g vsce
+          vsce package
+          mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
+
+      # -------------------- Загрузка артефактов в релиз ----------------
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            alwex
+            alwex.exe
+            alwexscript-${{ env.VERSION }}.deb
+            AlwexScript-Setup-${{ env.VERSION }}.exe
+            alwexscript-${{ env.VERSION }}.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
