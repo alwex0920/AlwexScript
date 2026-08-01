@@ -1,0 +1,66 @@
+{
+  "name": "alwexscript",
+  "displayName": "AlwexScript Language Support",
+  "description": "Syntax highlighting and language support for AlwexScript (.alw) v3.2.0 — String Operations",
+  "version": "3.2.0",
+  "publisher": "AlwexDeveloper",
+  "icon": "images/icon_dark.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "alwexscript",
+    "alw",
+    "embedded",
+    "syntax",
+    "highlighting",
+    "http",
+    "arrays",
+    "package-manager",
+    "internet",
+    "expressions",
+    "strings",
+    "oop",
+    "classes"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alwex0920/AlwexScript.git"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "alwexscript",
+        "aliases": [
+          "AlwexScript",
+          "alw"
+        ],
+        "extensions": [
+          ".alw"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon_light.png",
+          "dark": "./images/icon_dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "alwexscript",
+        "scopeName": "source.alw",
+        "path": "./syntaxes/alwexscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "alwexscript",
+        "path": "./snippets/alwexscript.json"
+      }
+    ]
+  }
+}
