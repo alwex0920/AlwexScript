@@ -99,9 +99,15 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
         shell: pwsh
 
+      - name: List files before rename
+        run: |
+          Get-ChildItem -Name AlwexScript-Setup-*.exe
+        shell: pwsh
+
       - name: Rename installer
         run: |
-          Move-Item AlwexScript-Setup-*.exe AlwexScript-Setup-$env:VERSION.exe
+           $file = Get-ChildItem AlwexScript-Setup-*.exe | Select-Object -First 1
+           Rename-Item -Path $file.Name -NewName "AlwexScript-Setup-$env:VERSION.exe"
         shell: pwsh
 
       - name: Upload installer artifact
