@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
 **Version**: 3.2.0  
 **Supported OS**: Windows, Linux, macOS  
-**Latest Updates**: Added full string operations (v3.2.0), OOP (v3.1.0)
+**Latest Updates**: Added full string operations (v3.2.0)
 
 ## Language Features
 - Simple syntax similar to natural language
