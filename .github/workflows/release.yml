@@ -93,7 +93,7 @@ jobs:
 
       - name: Build Windows installer with Inno Setup
         run: |
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss /DMyAppVersion=$env:VERSION
         shell: pwsh
 
       - name: Rename installer
