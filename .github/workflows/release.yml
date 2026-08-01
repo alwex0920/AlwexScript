@@ -67,11 +67,6 @@ jobs:
           npx @vscode/vsce package
           mv alwexscript-*.vsix ../alwexscript-${{ env.VERSION }}.vsix
 
-      - name: List built files (debug)
-        run: |
-          ls -la
-          ls -la alwexscript-vscode/ || true
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -122,12 +117,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        id: vars
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-
-      - name: List downloaded files
-        run: |
-          find . -type f
 
       - name: Upload assets to release
         uses: softprops/action-gh-release@v1
