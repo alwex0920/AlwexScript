@@ -56,8 +56,10 @@ jobs:
 
       - name: Install Inno Setup (portable)
         run: |
-          curl -L -o is.exe "https://github.com/jrsoftware/issrc/releases/download/is-6_2_2/innosetup-6.2.2.exe" || \
-          curl -L -o is.exe "https://jrsoftware.org/download.php/is.exe?ver=6.2.2"
+          # Попытка скачать с GitHub (надёжнее)
+          curl -L -f -o is.exe "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" || \
+          curl -L -f -o is.exe "https://jrsoftware.org/download.php/is.exe?ver=6.7.3" || \
+          wget --user-agent="Mozilla/5.0" -O is.exe "https://files.jrsoftware.org/is/6/innosetup-6.7.3.exe"
           if [ ! -f is.exe ]; then
             echo "Failed to download Inno Setup"
             exit 1
