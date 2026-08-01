@@ -103,7 +103,7 @@ jobs:
         with:
           name: linux-artifacts
 
-      - name: Debug: show version and files
+      - name: Debug show version and files
         run: |
           Write-Host "VERSION is: $env:VERSION"
           Get-ChildItem
