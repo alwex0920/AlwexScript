@@ -3120,7 +3120,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc != 2) {
-        printf("AlwexScript Interpreter v3.0.1\n\n");
+        printf("AlwexScript Interpreter\n\n");
         printf("Usage:\n");
         printf("  alwex <script.alw>          Run a script\n");
         printf("  alwex install <package>     Install a library\n");
