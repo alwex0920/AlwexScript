@@ -2494,7 +2494,7 @@ void execute(const char* code, int import_depth, const char* context_object) {
 
                 while (*args && my_isspace(*args)) args++;
                 
-                char* param_names[] = {"min", "max", "arr", "index", "value", "len", "a", "b", "c", "d"};
+                char* param_names[] = {"arg0", "arg1", "arg2", "arg3", "arg4"};
                 int param_idx = 0;
                 
                 while (*args && param_idx < 10) {
