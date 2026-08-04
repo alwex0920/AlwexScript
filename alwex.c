@@ -2519,11 +2519,22 @@ void execute(const char* code, int import_depth, const char* context_object) {
                         saved_count++;
                     }
 
-                    if (isdigit(param_value[0]) || param_value[0] == '-') {
+                    if (*param_value == '\'' || *param_value == '"') {
+                        // это строковый литерал
+                        char quote = *param_value;
+                        char* endq = strchr(param_value + 1, quote);
+                        if (endq) *endq = '\0';
+                        int str_idx = add_string();
+                        if (str_idx >= 0) {
+                            strncpy(string_pool[str_idx], param_value + 1, STRING_SIZE - 1);
+                            string_pool[str_idx][STRING_SIZE - 1] = '\0';
+                            param_var->str_value = string_pool[str_idx];
+                            param_var->value = 0;
+                        }
+                    } else if (isdigit(param_value[0]) || param_value[0] == '-') {
                         param_var->value = str_to_double(param_value);
                         param_var->str_value = NULL;
                     } else {
-
                         struct Variable* source_var = find_variable(param_value);
                         if (source_var) {
                             param_var->value = source_var->value;
