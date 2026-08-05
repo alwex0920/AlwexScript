@@ -317,7 +317,8 @@
   "File Read": {
     "prefix": "file_read",
     "body": [
-      "file_read '${1:filename.txt}'"
+      "file_read '${1:filename.txt}'",
+      "print file_content"
     ],
     "description": "Read file contents (v3.0)"
   },
