@@ -1164,6 +1164,50 @@ static const char* find_matching_end(const char* start) {
     return NULL;
 }
 
+// Заменяет {var} на значение переменной var (число или строку)
+void expand_vars(char* dest, const char* src, size_t max_len) {
+    size_t di = 0;
+    const char* si = src;
+    while (*si && di < max_len - 1) {
+        if (*si == '{') {
+            const char* end = strchr(si + 1, '}');
+            if (end) {
+                // извлекаем имя переменной
+                char varname[50];
+                size_t len = end - (si + 1);
+                if (len >= sizeof(varname)) len = sizeof(varname) - 1;
+                strncpy(varname, si + 1, len);
+                varname[len] = '\0';
+                // ищем переменную
+                struct Variable* v = find_variable(varname);
+                if (v) {
+                    if (v->str_value) {
+                        // строка: вставляем её (с кавычками? без)
+                        size_t slen = strlen(v->str_value);
+                        if (di + slen < max_len - 1) {
+                            strcpy(dest + di, v->str_value);
+                            di += slen;
+                        }
+                    } else {
+                        // число: преобразуем в строку
+                        char num_buf[64];
+                        snprintf(num_buf, sizeof(num_buf), "%.15g", v->value);
+                        size_t nlen = strlen(num_buf);
+                        if (di + nlen < max_len - 1) {
+                            strcpy(dest + di, num_buf);
+                            di += nlen;
+                        }
+                    }
+                }
+                si = end + 1;
+                continue;
+            }
+        }
+        dest[di++] = *si++;
+    }
+    dest[di] = '\0';
+}
+
 void execute(const char* code, int import_depth, const char* context_object) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep (max %d levels)\n", MAX_IMPORT_DEPTH);
@@ -2606,11 +2650,12 @@ void execute(const char* code, int import_depth, const char* context_object) {
         else if (strncmp(token, "exec ", 5) == 0) {
             char* command = token + 5;
             while (my_isspace(*command)) command++;
-            
+            char expanded[1024];
+            expand_vars(expanded, command, sizeof(expanded));
             #ifdef _WIN32
-                system(command);
+                system(expanded);
             #else
-                int result = system(command);
+                int result = system(expanded);
                 if (result == -1) {
                     printf("Error: failed to execute command\n");
                 }
@@ -2622,19 +2667,19 @@ void execute(const char* code, int import_depth, const char* context_object) {
         else if (strncmp(token, "file_write ", 11) == 0) {
             char* args = token + 11;
             while (my_isspace(*args)) args++;
-
             char filename[100];
             int i = 0;
             while (*args && !my_isspace(*args) && i < (int)(sizeof(filename) - 1)) {
                 filename[i++] = *args++;
             }
             filename[i] = '\0';
-
             while (my_isspace(*args)) args++;
-
+            // args теперь указывает на содержимое
+            char expanded[1024];
+            expand_vars(expanded, args, sizeof(expanded));
             FILE* file = fopen(filename, "w");
             if (file) {
-                fputs(args, file);
+                fputs(expanded, file);
                 fclose(file);
             } else {
                 printf("Error: cannot open file %s for writing\n", filename);
