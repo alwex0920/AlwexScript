@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.2.0  
+**Version**: 3.2.5  
 **Supported OS**: Windows, Linux, macOS  
-**Latest Updates**: Added full string operations (v3.2.0)
+**Latest Updates**: Fix func and add variable file_content(v3.2.5)
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -94,6 +94,7 @@ file_write data.txt "Hello, World!"
 
 # Read from file
 file_read data.txt
+print file_content
 
 # Append to file
 file_append data.txt "Additional content"
