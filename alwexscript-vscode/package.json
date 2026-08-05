@@ -2,11 +2,11 @@
   "name": "alwexscript",
   "displayName": "AlwexScript Language Support",
   "description": "Syntax highlighting and language support for AlwexScript (.alw) v3.2.0 — String Operations",
-  "version": "3.2.0",
+  "version": "3.2.5",
   "publisher": "AlwexDeveloper",
   "icon": "images/icon_dark.png",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.131.0"
   },
   "categories": [
     "Programming Languages"
