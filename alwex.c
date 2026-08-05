@@ -1121,6 +1121,49 @@ int add_object() {
     return object_count++;
 }
 
+static const char* find_matching_end(const char* start) {
+    const char* p = start;
+    int depth = 0;
+ 
+    while (*p) {
+        const char* line_start = p;
+        int line_len = 0;
+        while (p[line_len] != '\n' && p[line_len] != '\0') line_len++;
+ 
+        char line_buf[MAX_LINE_LEN];
+        int copy_len = line_len < (int)sizeof(line_buf) - 1
+                        ? line_len
+                        : (int)sizeof(line_buf) - 1;
+        memcpy(line_buf, line_start, copy_len);
+        line_buf[copy_len] = '\0';
+ 
+        char* tok = line_buf;
+        while (my_isspace(*tok)) tok++;
+        int leading_ws = (int)(tok - line_buf);
+ 
+        if (strncmp(tok, "if ", 3) == 0 ||
+            strncmp(tok, "while ", 6) == 0 ||
+            strncmp(tok, "func ", 5) == 0 ||
+            strncmp(tok, "class ", 6) == 0) {
+            depth++;
+        }
+        else if (strncmp(tok, "endloop", 7) == 0) {
+            depth--;
+        }
+        else if (strncmp(tok, "end", 3) == 0) {
+            if (depth == 0) {
+                return line_start + leading_ws;
+            }
+            depth--;
+        }
+ 
+        p = line_start + line_len;
+        if (*p == '\n') p++;
+    }
+ 
+    return NULL;
+}
+
 void execute(const char* code, int import_depth, const char* context_object) {
     if (import_depth > MAX_IMPORT_DEPTH) {
         printf("Error: import depth too deep (max %d levels)\n", MAX_IMPORT_DEPTH);
@@ -1302,7 +1345,7 @@ void execute(const char* code, int import_depth, const char* context_object) {
             method_name_clean[i] = '\0';
             
             if (strcmp(method_name_clean, "constructor") == 0) {
-                const char* end_ptr = strstr(p, "end");
+                const char* end_ptr = find_matching_end(p);
                 if (end_ptr) {
                     int body_size = end_ptr - p;
                     current_class->constructor_body = malloc(body_size + 1);
@@ -1321,7 +1364,7 @@ void execute(const char* code, int import_depth, const char* context_object) {
                     }
                 }
                 
-                const char* end_ptr = strstr(p, "end");
+                const char* end_ptr = find_matching_end(p);
                 if (end_ptr) {
                     int body_size = end_ptr - p;
                     
@@ -2455,7 +2498,7 @@ void execute(const char* code, int import_depth, const char* context_object) {
             struct Function* func = &functions[func_idx];
             strncpy(func->name, name, sizeof(func->name));
             
-            const char* end_ptr = strstr(p, "end");
+            const char* end_ptr = find_matching_end(p);
             if (!end_ptr) {
                 printf("Error: function missing end\n");
                 continue;
