@@ -1,28 +1,15 @@
-# AlwexScript Language Support v3.2.0
+# AlwexScript Language Support v3.2.5
 
-Официальная поддержка языка **AlwexScript v3.2.0** для Visual Studio Code.
+Официальная поддержка языка **AlwexScript v3.2.5** для Visual Studio Code.
 
-![Version](https://img.shields.io/badge/version-3.2.0-blue)
-![AlwexScript](https://img.shields.io/badge/AlwexScript-v3.2.0-green)
+![Version](https://img.shields.io/badge/version-3.2.5-blue)
+![AlwexScript](https://img.shields.io/badge/AlwexScript-v3.2.5-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## Что нового в v3.2.0?
+## Что нового в v3.2.5?
 
-### **Строковые операции**
-Добавлена полноценная поддержка работы со строками:
-
-- Конкатенация через `+` или `concat`
-- Длина строки: `len(s)` или `length(s)`
-- Сравнение строк через `==` и `!=` (уже было, теперь более надёжно)
-- Извлечение подстроки: `slice(s, start, end)` или `substr(s, start, end)`
-- Проверка вхождения: `contains(s, substring)`
-- Замена подстроки: `replace(s, old, new)`
-- Разбиение строки в массив: `str_split s delim arr`
-
-### **Улучшения**
-- Исправлена обработка строк в выражениях
-- Поддержка строковых литералов в кавычках (`'` и `"`)
-- Добавлены сниппеты для быстрого написания строковых операций
+### **Много-чего исправлено**
+Исправлены функции и при чтении файла содержимое сохраняется в переменную file_content
 
 ## Возможности
 
