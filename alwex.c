@@ -2689,7 +2689,6 @@ void execute(const char* code, int import_depth, const char* context_object) {
         else if (strncmp(token, "file_read ", 10) == 0) {
             char* filename = token + 10;
             while (my_isspace(*filename)) filename++;
-            
             FILE* file = fopen(filename, "r");
             if (file) {
                 char buffer[256];
@@ -2697,6 +2696,33 @@ void execute(const char* code, int import_depth, const char* context_object) {
                     printf("%s", buffer);
                 }
                 fclose(file);
+        
+                // Сохраняем содержимое в http_response
+                file = fopen(filename, "r");
+                if (file) {
+                    fseek(file, 0, SEEK_END);
+                    long size = ftell(file);
+                    fseek(file, 0, SEEK_SET);
+        
+                    struct Variable* v = find_variable("file_content");
+                    if (!v) {
+                        int idx = add_variable();
+                        if (idx >= 0) {
+                            v = &variables[idx];
+                            strcpy(v->name, "file_content");
+                        }
+                    }
+                    if (v) {
+                        int str_idx = add_string();
+                        if (str_idx >= 0) {
+                            fread(string_pool[str_idx], 1, size, file);
+                            string_pool[str_idx][size] = '\0';
+                            v->str_value = string_pool[str_idx];
+                            v->value = size;
+                        }
+                    }
+                    fclose(file);
+                }
             } else {
                 printf("Error: cannot open file %s for reading\n", filename);
             }
