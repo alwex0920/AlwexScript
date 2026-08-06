@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.2.6  
+**Version**: 3.2.7  
 **Supported OS**: Windows, Linux, macOS  
-**Latest Updates**: Critical fix and add str(x) and num(x)(v3.2.6)
+**Latest Updates**: string_capacity = 10000(v3.2.7)
 
 ## Language Features
 - Simple syntax similar to natural language
@@ -412,6 +412,7 @@ alwex install name_lib
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.2.7: string_capacity = 10000
 - v3.2.6: Critical fix and add str(x) and num(x)
 - v3.2.0: Added string operations (len, slice, contains, replace, concat, str_split)
 - v3.1.0: Added OOP
