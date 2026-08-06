@@ -1,15 +1,15 @@
-# AlwexScript Language Support v3.2.5
+# AlwexScript Language Support v3.2.6
 
-Официальная поддержка языка **AlwexScript v3.2.5** для Visual Studio Code.
+Официальная поддержка языка **AlwexScript v3.2.6** для Visual Studio Code.
 
 ![Version](https://img.shields.io/badge/version-3.2.5-blue)
 ![AlwexScript](https://img.shields.io/badge/AlwexScript-v3.2.5-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## Что нового в v3.2.5?
+## Что нового в v3.2.6?
 
 ### **Много-чего исправлено**
-Исправлены функции и при чтении файла содержимое сохраняется в переменную file_content
+Исправлены крит ошибки и добавлены функции str(x) и num(x)
 
 ## Возможности
 
