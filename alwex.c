@@ -995,7 +995,7 @@ void init_memory() {
     var_capacity = 10;
     variables = malloc(var_capacity * sizeof(struct Variable));
     
-    string_capacity = 10;
+    string_capacity = 10000;
     string_pool = malloc(string_capacity * sizeof(char*));
     for (int i = 0; i < string_capacity; i++) {
         string_pool[i] = malloc(STRING_SIZE);
