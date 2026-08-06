@@ -1,7 +1,7 @@
 # AlwexScript - Programming Language for Embedded Systems
-**Version**: 3.2.5  
+**Version**: 3.2.6  
 **Supported OS**: Windows, Linux, macOS  
-**Latest Updates**: Fix func and add variable file_content(v3.2.5)
+**Latest Updates**: Critical fix and add str(x) and num(x)(v3.2.6)
 
 ## Language Features
 - Simple syntax similar to natural language
