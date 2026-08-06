@@ -69,6 +69,12 @@ func greet
 end
 
 call greet
+
+let x_string = str(x)
+print x_string
+
+let x_num = num(x_string)
+print x_num
 ```
 ### Library Import
 ```alw
@@ -406,6 +412,7 @@ alwex install name_lib
 - https://t.me/AlwexScriptChat
 
 ## Version History
+- v3.2.6: Critical fix and add str(x) and num(x)
 - v3.2.0: Added string operations (len, slice, contains, replace, concat, str_split)
 - v3.1.0: Added OOP
 - v3.0.1: Fixed print
