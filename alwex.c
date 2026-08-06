@@ -2165,6 +2165,10 @@ void execute(const char* code, int import_depth, const char* context_object) {
         else if (strncmp(token, "http_get ", 9) == 0) {
             char* url = token + 9;
             while (my_isspace(*url)) url++;
+
+            char expanded[1024];
+            expand_vars(expanded, url, sizeof(expanded));
+            url = expanded;
             
             if (*url == '"' || *url == '\'') {
                 char quote = *url;
@@ -2200,6 +2204,10 @@ void execute(const char* code, int import_depth, const char* context_object) {
         else if (strncmp(token, "http_post ", 10) == 0) {
             char* args = token + 10;
             while (my_isspace(*args)) args++;
+
+            char expanded_args[1024];
+            expand_vars(expanded_args, args, sizeof(expanded_args));
+            args = expanded_args;
             
             char url[256] = {0};
             char data[512] = {0};
