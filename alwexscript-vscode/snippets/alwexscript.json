@@ -448,6 +448,24 @@
     ],
     "description": "Import library (v3.0)"
   },
+  "Num(x)": {
+    "prefix": "num",
+    "body": [
+      "let x = '123'",
+      "let x_num = num(x)",
+      "print x_num"
+    ],
+    "description": "Str to num"
+  },
+  "Str(x)": {
+    "prefix": "str",
+    "body": [
+      "let x = 123",
+      "let x_str = str(x)",
+      "print x_str"
+    ],
+    "description": "Num to str"
+  },
   "Random Integer": {
     "prefix": "randint",
     "body": [
