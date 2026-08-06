@@ -2126,6 +2126,42 @@ void execute(const char* code, int import_depth, const char* context_object) {
             }
             continue;
         }
+        else if (strcmp(name, "str") == 0) {
+            if (arg_count == 1) {
+                if (args[0].type == 1) {
+                    result = args[0];
+                } else {
+                    char temp[STRING_SIZE];
+                    snprintf(temp, sizeof(temp), "%.15g", args[0].num);
+                    int idx = add_string();
+                    if (idx >= 0) {
+                        strncpy(string_pool[idx], temp, STRING_SIZE - 1);
+                        string_pool[idx][STRING_SIZE - 1] = '\0';
+                        result.type = 1;
+                        result.str = string_pool[idx];
+                        result.num = 0;
+                    }
+                }
+            } else {
+                printf("Error: str() expects one argument\n");
+                result.type = 0; result.num = 0;
+            }
+            continue;
+        }
+        else if (strcmp(name, "num") == 0) {
+            if (arg_count == 1) {
+                if (args[0].type == 0) {
+                    result = args[0];
+                } else {
+                    result.type = 0;
+                    result.num = str_to_double(args[0].str);
+                }
+            } else {
+                printf("Error: num() expects one argument\n");
+                result.type = 0; result.num = 0;
+            }
+            continue;
+        }
 
         // ==================== HTTP GET ====================
         else if (strncmp(token, "http_get ", 9) == 0) {
