@@ -26,7 +26,7 @@
     #define MAX_IMPORT_DEPTH 50
 #endif
 
-#define STRING_SIZE 1024
+#define STRING_SIZE 65536
 #define MAX_FUNC_BODY_SIZE 4096
 #define MAX_LINE_LEN 1024
 #define MAX_HTTP_RESPONSE 1048576  // 1MB max response
@@ -613,7 +613,8 @@ struct Value parse_factor(const char** p) {
         temp[i] = '\0';
         int idx = add_string();
         if (idx >= 0) {
-            strcpy(string_pool[idx], temp);
+            strncpy(string_pool[idx], temp, STRING_SIZE - 1);
+                    string_pool[idx][STRING_SIZE - 1] = '\0';
             result.type = 1;
             result.str = string_pool[idx];
             result.num = 0;
@@ -669,7 +670,8 @@ struct Value parse_factor(const char** p) {
                     temp[end - start] = '\0';
                     int idx = add_string();
                     if (idx >= 0) {
-                        strcpy(string_pool[idx], temp);
+                        strncpy(string_pool[idx], temp, STRING_SIZE - 1);
+                    string_pool[idx][STRING_SIZE - 1] = '\0';
                         result.type = 1;
                         result.str = string_pool[idx];
                     }
@@ -702,7 +704,8 @@ struct Value parse_factor(const char** p) {
                             strcat(temp, pos + old_len);
                             int idx = add_string();
                             if (idx >= 0) {
-                                strcpy(string_pool[idx], temp);
+                                strncpy(string_pool[idx], temp, STRING_SIZE - 1);
+                    string_pool[idx][STRING_SIZE - 1] = '\0';
                                 result.type = 1;
                                 result.str = string_pool[idx];
                             }
@@ -713,7 +716,8 @@ struct Value parse_factor(const char** p) {
                     } else {
                         int idx = add_string();
                         if (idx >= 0) {
-                            strcpy(string_pool[idx], args[0].str);
+                            strncpy(string_pool[idx], args[0].str, STRING_SIZE - 1);
+                    string_pool[idx][STRING_SIZE - 1] = '\0';
                             result.type = 1;
                             result.str = string_pool[idx];
                         }
@@ -816,7 +820,8 @@ struct Value parse_expression(const char** p) {
                 strcat(temp, right.str);
                 int idx = add_string();
                 if (idx >= 0) {
-                    strcpy(string_pool[idx], temp);
+                    strncpy(string_pool[idx], temp, STRING_SIZE - 1);
+                    string_pool[idx][STRING_SIZE - 1] = '\0';
                     left.str = string_pool[idx];
                 } else {
                     printf("Error: string pool full\n");
@@ -1300,7 +1305,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                         if (parent->properties[j].str_value) {
                             int str_idx = add_string();
                             if (str_idx >= 0) {
-                                strcpy(string_pool[str_idx], parent->properties[j].str_value);
+                                strncpy(string_pool[str_idx], parent->properties[j].str_value, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                 current_class->properties[current_class->property_count].str_value = string_pool[str_idx];
                             }
                         }
@@ -1362,7 +1368,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                             *end_quote = '\0';
                             int str_idx = add_string();
                             if (str_idx >= 0) {
-                                strcpy(string_pool[str_idx], value_str);
+                                strncpy(string_pool[str_idx], value_str, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                 prop->str_value = string_pool[str_idx];
                                 prop->value = 0;
                             }
@@ -1482,7 +1489,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                             if (cls->properties[i].str_value) {
                                 int str_idx = add_string();
                                 if (str_idx >= 0) {
-                                    strcpy(string_pool[str_idx], cls->properties[i].str_value);
+                                    strncpy(string_pool[str_idx], cls->properties[i].str_value, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                     obj->properties[i].str_value = string_pool[str_idx];
                                 }
                             }
@@ -1522,7 +1530,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                                     if (param_var) {
                                         int str_idx = add_string();
                                         if (str_idx >= 0) {
-                                            strcpy(string_pool[str_idx], param_value);
+                                            strncpy(string_pool[str_idx], param_value, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                             param_var->str_value = string_pool[str_idx];
                                             param_var->value = 0;
                                         }
@@ -1650,7 +1659,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                                 *end_quote = '\0';
                                 int str_idx = add_string();
                                 if (str_idx >= 0) {
-                                    strcpy(string_pool[str_idx], value_str);
+                                    strncpy(string_pool[str_idx], value_str, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                     obj->properties[prop_idx].str_value = string_pool[str_idx];
                                     obj->properties[prop_idx].value = 0;
                                 }
@@ -1684,7 +1694,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                                     if (v->str_value) {
                                         int str_idx = add_string();
                                         if (str_idx >= 0) {
-                                            strcpy(string_pool[str_idx], v->str_value);
+                                            strncpy(string_pool[str_idx], v->str_value, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                             obj->properties[prop_idx].str_value = string_pool[str_idx];
                                             obj->properties[prop_idx].value = 0;
                                         }
@@ -1880,7 +1891,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                             arr->is_string_array = 1;
                             int str_idx = add_string();
                             if (str_idx >= 0 && arr->size < MAX_ARRAY_SIZE) {
-                                strcpy(string_pool[str_idx], temp_str);
+                                strncpy(string_pool[str_idx], temp_str, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                 arr->strings[arr->size++] = string_pool[str_idx];
                             }
                         } 
@@ -1929,7 +1941,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                 if (arr->is_string_array) {
                     int str_idx = add_string();
                     if (str_idx >= 0) {
-                        strcpy(string_pool[str_idx], arr->strings[index]);
+                        strncpy(string_pool[str_idx], arr->strings[index], STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                         v->str_value = string_pool[str_idx];
                         v->value = 0;
                     }
@@ -2010,7 +2023,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                             arr->is_string_array = 1;
                             int str_idx = add_string();
                             if (str_idx >= 0) {
-                                strcpy(string_pool[str_idx], value_str);
+                                strncpy(string_pool[str_idx], value_str, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                                 arr->strings[arr->size++] = string_pool[str_idx];
                             }
                         }
@@ -2834,7 +2848,8 @@ void execute(const char* code, int import_depth, const char* context_object) {
                 while (token_ptr && arr->size < MAX_ARRAY_SIZE) {
                     int str_idx = add_string();
                     if (str_idx >= 0) {
-                        strcpy(string_pool[str_idx], token_ptr);
+                        strncpy(string_pool[str_idx], token_ptr, STRING_SIZE - 1);
+                    string_pool[str_idx][STRING_SIZE - 1] = '\0';
                         arr->strings[arr->size++] = string_pool[str_idx];
                     }
                     token_ptr = strtok(NULL, delim);
