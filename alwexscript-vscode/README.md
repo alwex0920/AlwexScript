@@ -1,15 +1,15 @@
-# AlwexScript Language Support v3.2.7
+# AlwexScript Language Support v3.2.8
 
-Официальная поддержка языка **AlwexScript v3.2.7** для Visual Studio Code.
+Официальная поддержка языка **AlwexScript v3.2.8** для Visual Studio Code.
 
-![Version](https://img.shields.io/badge/version-3.2.5-blue)
-![AlwexScript](https://img.shields.io/badge/AlwexScript-v3.2.5-green)
+![Version](https://img.shields.io/badge/version-3.2.8-blue)
+![AlwexScript](https://img.shields.io/badge/AlwexScript-v3.2.8-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## Что нового в v3.2.7?
+## Что нового в v3.2.8?
 
 ### **Много-чего исправлено**
-string_capacity теперь 10000
+http_get и http_post теперь лучше
 
 ## Возможности
 
